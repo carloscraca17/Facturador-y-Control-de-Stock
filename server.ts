@@ -1,10 +1,9 @@
 import express from "express";
 import path from "path";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
+import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { rawProductData } from "./products_data";
-import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -74,7 +73,7 @@ const guard = (req: any, res: any, next: any) => {
 
 // Global Guard for all /api routes EXCEPT /api/health (which handles its own missing config message)
 app.use("/api", (req, res, next) => {
-  if (req.path === "/health") return next();
+  if (req.path === "/health" || req.path === "/admin/seed") return next();
   guard(req, res, next);
 });
 
@@ -179,7 +178,7 @@ app.post("/api/login", guard, async (req, res) => {
 // Users Management API
 app.get("/api/users", authenticate, guard, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("app_users")
       .select("*")
       .order("created_at", { ascending: false });
@@ -195,10 +194,10 @@ app.get("/api/users", authenticate, guard, async (req, res) => {
   }
 });
 
-app.post("/api/users", authenticate, async (req, res) => {
+app.post("/api/users", authenticate, guard, async (req, res) => {
   try {
     const body = req.body;
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("app_users")
       .insert([body])
       .select()
@@ -211,11 +210,11 @@ app.post("/api/users", authenticate, async (req, res) => {
   }
 });
 
-app.put("/api/users/:id", authenticate, async (req, res) => {
+app.put("/api/users/:id", authenticate, guard, async (req, res) => {
   try {
     const { id } = req.params;
     const body = req.body;
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("app_users")
       .update(body)
       .eq("id", id)
@@ -229,10 +228,10 @@ app.put("/api/users/:id", authenticate, async (req, res) => {
   }
 });
 
-app.delete("/api/users/:id", authenticate, async (req, res) => {
+app.delete("/api/users/:id", authenticate, guard, async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase
+    const { error } = await supabase!
       .from("app_users")
       .delete()
       .eq("id", id);
@@ -992,8 +991,9 @@ app.delete("/api/movements/:id", authenticate, async (req, res) => {
 });
 
 // Seed API
-app.post("/api/admin/seed", async (req, res) => {
+app.post("/api/admin/seed", guard, async (req, res) => {
     try {
+      if (!supabase) throw new Error("Base de datos no configurada");
       // 1. Seed Products (con upsert para evitar errores de duplicados)
       const items = rawProductData.map(item => ({
         sku_barcode: item.sku,
@@ -1009,7 +1009,7 @@ app.post("/api/admin/seed", async (req, res) => {
       }));
 
       // Usamos onConflict para que si el sku_barcode ya existe, lo actualice
-      const { data: prods, error: prodErr } = await supabase
+      const { data: prods, error: prodErr } = await supabase!
         .from("products")
         .upsert(items, { onConflict: 'sku_barcode' })
         .select();
@@ -1053,6 +1053,7 @@ async function startServer() {
   
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

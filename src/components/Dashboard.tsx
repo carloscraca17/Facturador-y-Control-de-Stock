@@ -272,15 +272,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-2xl flex flex-col gap-4 text-emerald-400 text-sm"
+          className="bg-emerald-500/10 border border-emerald-500/20 p-8 rounded-2xl flex flex-col items-center text-center gap-6 text-emerald-400"
         >
-          <div className="flex items-center gap-3">
-            <Check size={24} />
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mb-2">
+              <Check size={32} />
+            </div>
             <div>
-              <p className="font-bold">¡Conectado con Supabase con éxito!</p>
-              <p className="opacity-70">Tu base de datos está vacía. Puedes comenzar cargando productos en la sección Inventario o usar el cargador inicial.</p>
+              <p className="font-bold text-2xl mb-2">¡Servidor Conectado!</p>
+              <p className="opacity-70 max-w-md mx-auto">
+                Tu base de datos en Supabase está conectada pero vacía. 
+                ¿Quieres cargar datos de prueba (productos y ventas iniciales) para ver el sistema en acción?
+              </p>
             </div>
           </div>
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch("/api/admin/seed", { 
+                  method: "POST",
+                  headers: { "Authorization": localStorage.getItem("glow_token") || "" }
+                });
+                if (res.ok) {
+                  alert("¡Datos cargados con éxito! Actualizando...");
+                  window.location.reload();
+                } else {
+                  const error = await res.json();
+                  alert("Error al cargar datos: " + (error.error || "Error desconocido"));
+                }
+              } catch (err) {
+                alert("Error de conexión al cargar datos.");
+              }
+            }}
+            className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-400 transition-all shadow-xl shadow-emerald-500/20 flex items-center gap-2"
+          >
+            <Plus size={20} />
+            Cargar Datos Iniciales
+          </button>
         </motion.div>
       )}
       {isScanning && <Scanner onClose={() => setIsScanning(false)} />}
