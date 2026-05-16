@@ -10,8 +10,10 @@ import {
   ArrowUpDown, 
   Loader2,
   ChevronLeft,
-  ChevronRight 
+  ChevronRight,
+  Download
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 
 export const Inventory: React.FC = () => {
@@ -362,6 +364,37 @@ export const Inventory: React.FC = () => {
     }
   };
 
+  const handleExportProducts = async () => {
+    try {
+      // Fetch ALL products for export
+      const res = await fetch(`/api/products?page=1&limit=${productsTotal || 2000}`, {
+        headers: { "Authorization": localStorage.getItem("glow_token") || "" }
+      });
+      const data = await res.json();
+      const allProducts = data.data || [];
+
+      const exportData = allProducts.map((p: any) => ({
+        "Nombre": p.nombre,
+        "SKU": p.sku_barcode,
+        "Categoría": p.categoria || "General",
+        "Costo Unitario": p.costo_unitario,
+        "Precio Venta": p.precio_venta,
+        "Stock Actual": p.stock_actual,
+        "Stock Mínimo": p.stock_minimo,
+        "Detalles": p.detalles || "",
+        "ID": p.id
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+      XLSX.writeFile(wb, `Inventario_GlowManager_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error("Error exporting products:", err);
+      alert("Error al exportar inventario.");
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 md:pb-10">
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
@@ -370,6 +403,13 @@ export const Inventory: React.FC = () => {
           <h1 className="serif text-4xl md:text-5xl font-light text-white italic">Inventario</h1>
         </div>
         <div className="flex flex-wrap gap-3">
+          <button 
+            onClick={handleExportProducts}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-xs font-bold hover:bg-emerald-500/20 transition-all font-mono"
+          >
+            <Download size={16} />
+            Exportar XLS
+          </button>
           <button 
             onClick={() => setShowImport(true)}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white/5 text-white/60 border border-white/10 rounded-full text-xs font-bold hover:bg-white/10 transition-all font-mono"

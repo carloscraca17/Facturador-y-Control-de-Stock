@@ -26,7 +26,8 @@
     "react-dom": "^19.0.1",
     "react-markdown": "^10.1.0",
     "react-qr-barcode-scanner": "^2.1.25",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

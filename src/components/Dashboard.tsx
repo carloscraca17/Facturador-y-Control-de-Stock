@@ -14,8 +14,11 @@ import {
   Check, 
   Clock,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Upload
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 import { Scanner } from "./Scanner";
 import { Sale } from "../types";
@@ -31,6 +34,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [sortBy, setSortBy] = useState<string>("fecha_venta");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -184,6 +189,118 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        if (data.length === 0) {
+          alert("El archivo está vacío.");
+          setImporting(false);
+          return;
+        }
+
+        // We'll try to match products by SKU or Name if provided
+        for (const row of data as any[]) {
+          const sku = row["SKU"] || row["sku"] || row["Codigo"];
+          const productName = row["Producto"] || row["Nombre Producto"];
+          
+          let productId = "";
+          if (sku) {
+            const prod = products.find(p => p.sku_barcode === String(sku));
+            if (prod) productId = prod.id;
+          }
+          if (!productId && productName) {
+            const prod = products.find(p => p.nombre.toLowerCase().includes(String(productName).toLowerCase()));
+            if (prod) productId = prod.id;
+          }
+
+          const sale = {
+            fecha_venta: row["Fecha"] || new Date().toISOString(),
+            product_id: productId || null,
+            canal_venta: row["Canal"] || "Local",
+            ingreso_bruto: Number(row["Monto Bruto"]) || Number(row["Total"]) || 0,
+            descuento: Number(row["Descuento"]) || 0,
+            ingreso_neto: Number(row["Monto Neto"]) || (Number(row["Monto Bruto"]) || 0) - (Number(row["Descuento"]) || 0),
+            cliente_nombre: row["Cliente"] || row["Nombre Cliente"] || "Consumidor Final",
+            pagado: String(row["Estado Pago"]).toLowerCase().includes("cobrado") || !!row["Pagado"],
+            pago_parcial: Number(row["Pago Parcial"]) || 0,
+            estado_entrega: row["Estado Entrega"] || "Entregado",
+            estado_arca: row["Estado ARCA"] || "Pendiente",
+            detalles_venta: row["Detalles"] || ""
+          };
+
+          await fetch("/api/sales", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": localStorage.getItem("glow_token") || ""
+            },
+            body: JSON.stringify(sale)
+          });
+        }
+
+        setShowImport(false);
+        await fetchSales(1, itemsPerPage);
+        await refreshData();
+        alert(`¡Se procesaron ${data.length} ventas!`);
+      } catch (err) {
+        console.error("Error importing sales:", err);
+        alert("Error al procesar el archivo. Revisa el formato.");
+      } finally {
+        setImporting(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleExportSales = async () => {
+    try {
+      // Fetch ALL sales for export
+      const res = await fetch(`/api/sales?page=1&limit=${salesTotal || 1000}`, {
+        headers: { "Authorization": localStorage.getItem("glow_token") || "" }
+      });
+      const data = await res.json();
+      const allSales: Sale[] = data.data || [];
+
+      const exportData = allSales.map(s => {
+        const product = products.find(p => p.id === s.product_id);
+        return {
+          "Fecha": s.fecha_venta ? new Date(s.fecha_venta).toLocaleDateString() : "N/A",
+          "Producto": product?.nombre || "N/A",
+          "SKU": product?.sku_barcode || "N/A",
+          "Cliente": `${s.cliente_nombre || ''} ${s.cliente_apellido || ''}`.trim() || "Consumidor Final",
+          "Canal": s.canal_venta,
+          "Monto Bruto": s.ingreso_bruto,
+          "Descuento": s.descuento,
+          "Monto Neto": s.ingreso_neto,
+          "Pago Parcial": s.pago_parcial || 0,
+          "Estado Pago": s.pagado ? "Cobrado" : "Pendiente",
+          "Estado Entrega": s.estado_entrega || "Pendiente",
+          "Estado ARCA": s.estado_arca,
+          "Detalles": s.detalles_venta || ""
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Ventas");
+      XLSX.writeFile(wb, `Ventas_GlowManager_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error("Error exporting sales:", err);
+      alert("Error al exportar ventas.");
+    }
+  };
+
   const unpaidTotalCalculated = sales.reduce((acc, s) => {
     if (s.pagado) return acc;
     return acc + (Math.max(0, (s.ingreso_bruto || 0) - (Number(s.pago_parcial) || 0)));
@@ -225,6 +342,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   return (
     <div className="space-y-8 p-4 md:p-6 lg:p-10 max-w-7xl mx-auto pb-24 md:pb-10">
+      {/* Import Modal */}
+      <AnimatePresence>
+        {showImport && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => !importing && setShowImport(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-md w-full"
+            >
+              <h3 className="text-2xl font-bold text-white mb-6">Importar Ventas</h3>
+              <p className="text-white/60 text-sm mb-8 leading-relaxed">
+                Sube un archivo Excel (.xlsx o .csv). El sistema intentará vincular los productos por <b>SKU</b> o <b>Nombre</b>.
+                <br /><br />
+                Columnas sugeridas: Fecha, Producto, SKU, Canal, Monto Bruto, Descuento, Estado Pago.
+              </p>
+
+              <div className="space-y-4">
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="sales-upload"
+                  disabled={importing}
+                />
+                <label
+                  htmlFor="sales-upload"
+                  className={`flex flex-col items-center gap-4 p-10 border-2 border-dashed border-white/10 rounded-2xl cursor-pointer hover:bg-white/5 transition-all ${
+                    importing ? "opacity-50 cursor-wait" : ""
+                  }`}
+                >
+                  {importing ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}>
+                      <Plus size={32} className="text-pink-500" />
+                    </motion.div>
+                  ) : (
+                    <Upload size={32} className="text-white/20" />
+                  )}
+                  <span className="text-sm font-bold text-white">
+                    {importing ? "Procesando..." : "Seleccionar Archivo"}
+                  </span>
+                </label>
+                
+                <button
+                  onClick={() => setShowImport(false)}
+                  disabled={importing}
+                  className="w-full py-4 text-white/40 text-xs font-bold uppercase tracking-widest hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {isScanning && <Scanner onClose={() => setIsScanning(false)} />}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
@@ -308,12 +489,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                 <ShoppingBag size={20} className="text-pink-400" />
                 PANEL DE VENTAS
               </h2>
-              <button 
-                onClick={() => onPageChange("inventory")}
-                className="text-xs font-bold text-pink-400 uppercase tracking-widest hover:underline"
-              >
-                Ver Todo
-              </button>
+              <div className="flex gap-4 items-center">
+                <button 
+                  onClick={handleExportSales}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
+                >
+                  <Download size={14} />
+                  Exportar XLS
+                </button>
+                <button 
+                  onClick={() => setShowImport(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/5 text-white/60 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all border border-white/10"
+                >
+                  <Upload size={14} />
+                  Importar
+                </button>
+                <button 
+                  onClick={() => onPageChange("inventory")}
+                  className="text-xs font-bold text-pink-400 uppercase tracking-widest hover:underline"
+                >
+                  Ver Todo
+                </button>
+              </div>
             </div>
 
             {/* Filtros */}
