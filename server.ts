@@ -43,8 +43,8 @@ if (!supabase) {
 }
 
 const AUTH_TOKEN = "glow-manager-session-true";
-const app = express();
-const PORT = 3000;
+export const app = express();
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -994,4 +994,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Start server only if not being imported as a module (e.g. by Vercel)
+if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

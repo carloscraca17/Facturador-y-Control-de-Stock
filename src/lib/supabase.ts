@@ -4,13 +4,13 @@ import { createClient } from "@supabase/supabase-js";
 // Next.js uses process.env.NEXT_PUBLIC_...
 // We handle both for compatibility and user preference
 
-// Vite standard (Client side) - VITE_ prefix is REQUIRED for Vite
+// Vite standard (Client side) - VITE_ prefix is preferred for Vite
 const VITE_URL = import.meta.env.VITE_SUPABASE_URL;
 const VITE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Fallback search (Vite build-time defines or Node environments)
-const supabaseUrl = VITE_URL || "";
-const supabaseAnonKey = VITE_KEY || "";
+const supabaseUrl = VITE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const supabaseAnonKey = VITE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
 console.log("[FRONTEND] Supabase Variables Check:", { 
   hasUrl: !!supabaseUrl, 
