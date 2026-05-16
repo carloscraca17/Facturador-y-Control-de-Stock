@@ -209,7 +209,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           return;
         }
 
-        // We'll try to match products by SKU or Name if provided
+        let successCount = 0;
+        let errorCount = 0;
+
         for (const row of data as any[]) {
           const sku = row["SKU"] || row["sku"] || row["Codigo"];
           const productName = row["Producto"] || row["Nombre Producto"];
@@ -239,20 +241,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             detalles_venta: row["Detalles"] || ""
           };
 
-          await fetch("/api/sales", {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              "Authorization": localStorage.getItem("glow_token") || ""
-            },
-            body: JSON.stringify(sale)
-          });
+          try {
+            const res = await fetch("/api/sales", {
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": localStorage.getItem("glow_token") || ""
+              },
+              body: JSON.stringify(sale)
+            });
+            if (res.ok) successCount++;
+            else errorCount++;
+          } catch (e) {
+            errorCount++;
+          }
         }
 
         setShowImport(false);
         await fetchSales(1, itemsPerPage);
         await refreshData();
-        alert(`¡Se procesaron ${data.length} ventas!`);
+        alert(`Importación finalizada. Éxito: ${successCount}, Errores: ${errorCount}`);
       } catch (err) {
         console.error("Error importing sales:", err);
         alert("Error al procesar el archivo. Revisa el formato.");

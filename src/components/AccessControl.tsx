@@ -28,7 +28,7 @@ export function AccessControl() {
     try {
       setLoading(true);
       const res = await fetch("/api/users", {
-        headers: { "Authorization": "glow-manager-session-true" }
+        headers: { "Authorization": localStorage.getItem("glow_token") || "glow-manager-session-true" }
       });
       
       const contentType = res.headers.get("content-type");
@@ -86,7 +86,7 @@ export function AccessControl() {
         method,
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "glow-manager-session-true"
+          "Authorization": localStorage.getItem("glow_token") || "glow-manager-session-true"
         },
         body: JSON.stringify(formData)
       });
@@ -107,7 +107,7 @@ export function AccessControl() {
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: "DELETE",
-        headers: { "Authorization": "glow-manager-session-true" }
+        headers: { "Authorization": localStorage.getItem("glow_token") || "glow-manager-session-true" }
       });
       if (!res.ok) throw new Error("Error al eliminar usuario");
       fetchUsers();

@@ -129,69 +129,75 @@ export const Inventory: React.FC = () => {
     return Number(clean) || 0;
   };
 
-  const handleImport = async () => {
-    if (!importText.trim()) return;
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setIsSaving(true);
-    try {
-        const lines = importText.split("\n").filter(l => l.trim());
-        for (const line of lines) {
-            let parts: string[] = [];
-            if (line.includes("\t")) {
-                parts = line.split("\t").map(p => p.trim());
-            } else {
-                parts = line.split(",").map(p => p.trim());
-            }
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
 
-            // Skip header if it contains SKU
-            if (parts.length < 2 || parts[0].toLowerCase().includes("sku")) continue;
-            
-            // Expected Order (User Spreadsheet): 
-            // SKU [0], Producto [1], Categoría [2], Costo [3], Precio [4], Stock Actual [5], Stock Mínimo [6], Detalles [7]
-            const sku = parts[0];
-            const name = parts[1];
-            const category = parts[2] || "General";
-            const cost = cleanCurrency(parts[3]);
-            const price = cleanCurrency(parts[4]);
-            const stock = Number(parts[5]?.replace(/[^0-9]/g, "")) || 0;
-            const minStock = Number(parts[6]?.replace(/[^0-9]/g, "")) || 1;
-            const detailsText = parts[7] || "";
-
-            const response = await fetch("/api/products", {
-                method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": token || localStorage.getItem("glow_token") || ""
-                },
-                body: JSON.stringify({
-                    nombre: name,
-                    sku_barcode: sku || `SKU-${Date.now()}`,
-                    costo_unitario: cost,
-                    precio_venta: price,
-                    stock_actual: stock,
-                    stock_minimo: minStock,
-                    categoria: category,
-                    detalles: detailsText,
-                    userId: "admin"
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json();
-                console.error(`Import error for ${name}:`, errData);
-                // We'll alert only the first error to avoid spamming alerts if many fail
-                throw new Error(`Error en el producto "${name}": ${errData.error}`);
-            }
+        if (data.length === 0) {
+          alert("El archivo está vacío.");
+          setIsSaving(false);
+          return;
         }
-        await refreshData();
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const row of data as any[]) {
+          const product = {
+            nombre: row["Nombre"] || row["Producto"] || row["Nombre Producto"],
+            sku_barcode: String(row["SKU"] || row["sku"] || row["Codigo"] || ""),
+            categoria: row["Categoría"] || row["Categoria"] || "General",
+            costo_unitario: Number(row["Costo Unitario"]) || Number(row["Costo"]) || 0,
+            precio_venta: Number(row["Precio Venta"]) || Number(row["Precio"]) || 0,
+            stock_actual: Number(row["Stock Actual"]) || Number(row["Stock"]) || 0,
+            stock_minimo: Number(row["Stock Mínimo"]) || Number(row["Minimo"]) || 5,
+            detalles: row["Detalles"] || row["Detalle"] || ""
+          };
+
+          if (!product.nombre || !product.sku_barcode) continue;
+
+          try {
+            const res = await fetch("/api/products", {
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": token || localStorage.getItem("glow_token") || ""
+              },
+              body: JSON.stringify(product)
+            });
+            
+            if (res.ok) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } catch (err) {
+            errorCount++;
+          }
+        }
+
         setShowImport(false);
-        setImportText("");
-        alert("Importación completada con éxito");
-    } catch (err: any) {
-        console.error("Error importing data:", err);
-        alert(`Error durante la importación: ${err.message}`);
-    } finally {
+        await fetchProducts(1, itemsPerPage);
+        await refreshData();
+        alert(`Importación finalizada. Éxito: ${successCount}, Errores: ${errorCount}`);
+      } catch (err) {
+        console.error("Error importing products:", err);
+        alert("Error al procesar el archivo Excel.");
+      } finally {
         setIsSaving(false);
-    }
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -845,29 +851,30 @@ export const Inventory: React.FC = () => {
               <button onClick={() => setShowImport(false)} className="text-white/30 hover:text-white transition-colors"><CloseIcon /></button>
             </div>
             <div className="p-8 space-y-6">
-              <div className="bg-pink-500/10 border border-pink-500/20 p-4 rounded-2xl text-[10px] text-pink-400 font-mono">
-                Copia las celdas de tu Excel (incluyendo encabezados si quieres) y pégalas aquí.<br/>
-                Orden sugerido: SKU, Producto, Categoría, Costo, Precio, Stock, Min, Detalle.
+              <div className="bg-pink-500/10 border border-pink-500/20 p-6 rounded-3xl text-center space-y-4">
+                <p className="text-white/60 text-sm">Selecciona un archivo Excel (.xlsx o .xls) con las columnas: <br/><strong>Nombre, SKU, Categoría, Costo, Precio, Stock, Min, Detalle</strong></p>
+                <input 
+                  type="file" 
+                  accept=".xlsx, .xls"
+                  onChange={handleFileUpload}
+                  disabled={isSaving}
+                  className="hidden"
+                  id="excel-upload"
+                />
+                <label 
+                  htmlFor="excel-upload"
+                  className="inline-flex items-center gap-2 px-8 py-4 bg-pink-500 text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-pink-400 transition-all cursor-pointer shadow-lg shadow-pink-500/20"
+                >
+                  {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+                  {isSaving ? "Procesando..." : "Seleccionar Archivo"}
+                </label>
               </div>
-              <textarea 
-                className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-xs font-mono focus:outline-none focus:border-pink-500 transition-colors"
-                placeholder="Ejemplo:&#10;Esmalte Nude, SKIN-001, 500, 1500, 10, 5, Manicuría"
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-              />
               <div className="flex gap-4">
                   <button 
                     onClick={() => setShowImport(false)}
                     className="flex-1 py-4 bg-white/5 text-white/60 rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-white/10"
                   >
-                    Cancelar
-                  </button>
-                  <button 
-                    onClick={handleImport}
-                    disabled={isSaving || !importText.trim()}
-                    className="flex-1 py-4 bg-pink-500 text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-pink-400 shadow-lg shadow-pink-500/20 flex items-center justify-center gap-2"
-                  >
-                    {isSaving ? <Loader2 className="animate-spin" size={18} /> : "Procesar Catálogo"}
+                    Cerrar
                   </button>
               </div>
             </div>
