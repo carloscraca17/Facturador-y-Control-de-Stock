@@ -13,17 +13,21 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || proce
 
 // Initialize Supabase Client with strict validation
 const getSupabaseClient = () => {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("ERROR REAL EN VERCEL: Faltan las variables de entorno de Supabase (SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY/ANON_KEY).");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    console.error("ERROR REAL EN VERCEL: Faltan las variables de entorno de Supabase (URL o KEY).");
     return null;
   }
   
   try {
-    const normalizedUrl = SUPABASE_URL.trim()
+    const normalizedUrl = url.trim()
       .replace(/\/$/, "")
       .replace(/\/rest\/v1$/, "");
       
-    return createClient(normalizedUrl, SUPABASE_SERVICE_ROLE_KEY);
+    // Pasando explícitamente los argumentos
+    return createClient(normalizedUrl, key);
   } catch (err: any) {
     console.error("ERROR REAL EN VERCEL (Initialization):", err);
     return null;
