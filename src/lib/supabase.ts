@@ -4,26 +4,22 @@ import { createClient } from "@supabase/supabase-js";
 // Next.js uses process.env.NEXT_PUBLIC_...
 // We handle both for compatibility and user preference
 
-// Vite standard (Client side)
+// Vite standard (Client side) - VITE_ prefix is REQUIRED for Vite
 const VITE_URL = import.meta.env.VITE_SUPABASE_URL;
 const VITE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Next.js standard (for completeness if user migrated)
-const NEXT_URL = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined;
-const NEXT_KEY = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined;
-
-const supabaseUrl = VITE_URL || NEXT_URL || "";
-const supabaseAnonKey = VITE_KEY || NEXT_KEY || "";
+// Fallback search (Vite build-time defines or Node environments)
+const supabaseUrl = VITE_URL || "";
+const supabaseAnonKey = VITE_KEY || "";
 
 console.log("[FRONTEND] Supabase Variables Check:", { 
   hasUrl: !!supabaseUrl, 
-  urlLength: supabaseUrl?.length,
   hasKey: !!supabaseAnonKey,
-  envType: import.meta.env.MODE 
+  mode: import.meta.env.MODE 
 });
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("CRITICAL: Supabase URL or Key is missing. In Vercel, ensure you added VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+  console.error("CRITICAL: Supabase URL or Key is missing. In Vercel, you MUST use the VITE_ prefix (e.g., VITE_SUPABASE_URL), not NEXT_PUBLIC_.");
 }
 
 // Only initialize if we have the values to prevent "supabaseUrl is required" crash

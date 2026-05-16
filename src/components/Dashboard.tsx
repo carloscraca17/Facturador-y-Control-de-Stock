@@ -233,10 +233,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               </p>
             </div>
           </div>
-          <div className="bg-black/20 p-4 rounded-xl space-y-3 text-xs">
-            <p className="opacity-80">
-              <b>Nota técnica:</b> Este error proviene directamente del backend o del cliente de base de datos. Verifica los logs de Vercel para más detalles.
-            </p>
+          <div className="bg-black/20 p-4 rounded-xl space-y-4 text-xs">
+            <p className="font-bold uppercase tracking-widest text-white/40">Guía de solución para Vercel:</p>
+            <ol className="list-decimal ml-4 space-y-3 opacity-90">
+              <li>
+                <span className="font-bold text-white">Variables del Frontend:</span> En el panel de Vercel, agrega 
+                <code className="bg-white/10 px-1 rounded ml-1 text-pink-300">VITE_SUPABASE_URL</code> y 
+                <code className="bg-white/10 px-1 rounded ml-1 text-pink-300">VITE_SUPABASE_ANON_KEY</code>. 
+                <br/><span className="text-[10px] opacity-60 italic">Vite requiere el prefijo VITE_ para que las variables lleguen al navegador.</span>
+              </li>
+              <li>
+                <span className="font-bold text-white">Variables del Backend:</span> Asegúrate de tener también 
+                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_URL</code> y 
+                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_SERVICE_ROLE_KEY</code>.
+              </li>
+              <li>
+                <span className="font-bold text-white">Redeploy Obligatorio:</span> Después de guardar las variables, ve a la pestaña <b>Deployments</b> en Vercel, busca el último y selecciona <b>Redeploy</b>. Las variables de Vite se inyectan en tiempo de compilación.
+              </li>
+            </ol>
+            <div className="pt-2 border-t border-white/5 opacity-60 italic">
+              <b>Nota sobre API 404:</b> Se ha añadido un archivo `vercel.json` para configurar el enrutamiento. Si sigues viendo 404, verifica que tu proyecto esté configurado como Node.js en Vercel.
+            </div>
           </div>
         </motion.div>
       )}
