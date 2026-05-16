@@ -4,19 +4,31 @@ import { createClient } from "@supabase/supabase-js";
 // Next.js uses process.env.NEXT_PUBLIC_...
 // We handle both for compatibility and user preference
 
-const envUrl = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) : undefined);
-const envKey = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY) : undefined);
+// Vite standard (Client side)
+const VITE_URL = import.meta.env.VITE_SUPABASE_URL;
+const VITE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const supabaseUrl = envUrl || import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = envKey || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+// Next.js standard (for completeness if user migrated)
+const NEXT_URL = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined;
+const NEXT_KEY = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined;
 
-console.log(`[FRONTEND] Supabase Config Check: URL_Present=${!!supabaseUrl}, KEY_Present=${!!supabaseAnonKey}`);
+const supabaseUrl = VITE_URL || NEXT_URL || "";
+const supabaseAnonKey = VITE_KEY || NEXT_KEY || "";
+
+console.log("[FRONTEND] Supabase Variables Check:", { 
+  hasUrl: !!supabaseUrl, 
+  urlLength: supabaseUrl?.length,
+  hasKey: !!supabaseAnonKey,
+  envType: import.meta.env.MODE 
+});
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("CRITICAL: Supabase variables missing in Frontend environment. Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel.");
+  console.error("CRITICAL: Supabase URL or Key is missing. In Vercel, ensure you added VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
 }
 
-// Always pass arguments explicitly to createClient
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Only initialize if we have the values to prevent "supabaseUrl is required" crash
+export const supabase = (supabaseUrl && supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null as any;
 
 export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
