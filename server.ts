@@ -2,44 +2,32 @@ import express from "express";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
+
 import { createClient } from "@supabase/supabase-js";
 import { rawProductData } from "./products_data";
 
-dotenv.config();
-
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-
-// Initialize Supabase Client with strict validation
 const getSupabaseClient = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-  console.log(`[BACKEND] Supabase Check: URL_Present=${!!url} (${url?.length || 0} chars), KEY_Present=${!!key} (${key?.length || 0} chars)`);
-
   if (!url || !key) {
-    console.error("ERROR REAL EN VERCEL: Faltan las variables de entorno de Supabase. URL o KEY están indefinidas en process.env.");
+    console.error("[BACKEND] Missing Supabase variables.");
     return null;
   }
   
   try {
-    const normalizedUrl = url.trim()
-      .replace(/\/$/, "")
-      .replace(/\/rest\/v1$/, "");
-      
+    const normalizedUrl = url.trim().replace(/\/$/, "").replace(/\/rest\/v1$/, "");
     return createClient(normalizedUrl, key);
   } catch (err: any) {
-    console.error("ERROR REAL EN VERCEL (Initialization):", err);
+    console.error("[BACKEND] Initialization Error:", err);
     return null;
   }
 };
 
 const supabase = getSupabaseClient();
-
-if (!supabase) {
-  const errorMsg = "Faltan las variables de entorno de Supabase en este entorno (SUPABASE_URL o KEY).";
-  console.error("ERROR REAL EN VERCEL:", errorMsg);
-}
 
 const AUTH_TOKEN = "glow-manager-session-true";
 export const app = express();
@@ -71,10 +59,19 @@ const guard = (req: any, res: any, next: any) => {
   next();
 };
 
-// Global Guard for all /api routes EXCEPT /api/health (which handles its own missing config message)
+// Global Guard for all /api routes
 app.use("/api", (req, res, next) => {
-  if (req.path === "/health" || req.path === "/admin/seed") return next();
-  guard(req, res, next);
+  const publicRoutes = ["/health", "/admin/seed", "/login"];
+  if (publicRoutes.includes(req.path)) return next();
+  
+  if (!supabase) {
+    console.warn(`[BACKEND] Guard: No Supabase for ${req.path}`);
+    return res.status(503).json({ 
+      error: "Servidor no configurado", 
+      details: "La conexión con Supabase falló en el arranque. Revisa tus variables de entorno." 
+    });
+  }
+  next();
 });
 
 // Health check
@@ -176,21 +173,24 @@ app.post("/api/login", guard, async (req, res) => {
 });
 
 // Users Management API
-app.get("/api/users", authenticate, guard, async (req, res) => {
+app.get("/api/users", authenticate, async (req, res) => {
   try {
-    const { data, error } = await supabase!
+    if (!supabase) {
+        return res.status(503).json({ error: "Base de datos no disponible", details: "Verifica las variables de entorno en el servidor." });
+    }
+    const { data, error } = await supabase
       .from("app_users")
       .select("*")
       .order("created_at", { ascending: false });
     
     if (error) {
        console.error("[USERS] Supabase Error:", error);
-       return res.status(error.code === 'PGRST116' ? 404 : 500).json({ error: error.message });
+       return res.status(500).json({ error: error.message, code: error.code });
     }
-    res.json(data);
+    res.json(data || []);
   } catch (error: any) {
-    console.error("[USERS] Catch Error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("[USERS] Fatal Error:", error);
+    res.status(500).json({ error: "Error fatal al cargar usuarios", message: error.message });
   }
 });
 
@@ -860,12 +860,13 @@ app.post("/api/bulk-delete/:table", authenticate, guard, async (req, res) => {
 });
 
 // Stats API
-app.get("/api/stats", authenticate, guard, async (req, res) => {
+app.get("/api/stats", authenticate, async (req, res) => {
   try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
     // Optimization: fetch only necessary columns for stats calculation
     const [salesRes, productsRes] = await Promise.all([
-      supabase!.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca"),
-      supabase!.from("products").select("stock_actual, stock_minimo")
+      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca"),
+      supabase.from("products").select("stock_actual, stock_minimo")
     ]);
 
     const sales = salesRes.data || [];
@@ -876,7 +877,7 @@ app.get("/api/stats", authenticate, guard, async (req, res) => {
     
     // For profit, we really need cost. Let's estimate it if critical or fetch expenses.
     // If we want real profit including expenses:
-    const { data: expenses } = await supabase!.from("expenses").select("monto");
+    const { data: expenses } = await supabase.from("expenses").select("monto");
     const totalExpenses = (expenses || []).reduce((acc, e) => acc + (Number(e.monto) || 0), 0);
 
     const unpaidTotal = sales.reduce((acc, s) => {
@@ -887,7 +888,7 @@ app.get("/api/stats", authenticate, guard, async (req, res) => {
     res.json({
       totalRevenue,
       realProfit: totalNet - totalExpenses,
-      stockAlerts: products.filter(p => p.stock_actual <= p.stock_minimo).length,
+      stockAlerts: products.filter(p => Number(p.stock_actual) <= Number(p.stock_minimo)).length,
       arcaPending: sales.filter(s => s.estado_arca === "Pendiente").length,
       salesCount: sales.length,
       unpaidTotal
@@ -898,19 +899,10 @@ app.get("/api/stats", authenticate, guard, async (req, res) => {
   }
 });
 
-// Final error handler
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("[GLOBAL ERROR]:", err);
-  res.status(500).json({ 
-    error: "Internal Server Error", 
-    message: err.message || "Uncaught exception",
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-});
-
 // Movements API
-app.get("/api/movements", authenticate, guard, async (req, res) => {
+app.get("/api/movements", authenticate, async (req, res) => {
   try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
     const { data, error } = await supabase
       .from("movements")
       .select("*")
@@ -928,6 +920,7 @@ app.get("/api/movements", authenticate, guard, async (req, res) => {
   }
 });
 
+// Movements API POST
 app.post("/api/movements", authenticate, async (req, res) => {
   try {
     const movement = req.body;
@@ -991,9 +984,9 @@ app.delete("/api/movements/:id", authenticate, async (req, res) => {
 });
 
 // Seed API
-app.post("/api/admin/seed", guard, async (req, res) => {
+app.post("/api/admin/seed", async (req, res) => {
     try {
-      if (!supabase) throw new Error("Base de datos no configurada");
+      if (!supabase) return res.status(503).json({ error: "Base de datos no configurada en el servidor" });
       // 1. Seed Products (con upsert para evitar errores de duplicados)
       const items = rawProductData.map(item => ({
         sku_barcode: item.sku,
@@ -1009,7 +1002,7 @@ app.post("/api/admin/seed", guard, async (req, res) => {
       }));
 
       // Usamos onConflict para que si el sku_barcode ya existe, lo actualice
-      const { data: prods, error: prodErr } = await supabase!
+      const { data: prods, error: prodErr } = await supabase
         .from("products")
         .upsert(items, { onConflict: 'sku_barcode' })
         .select();
@@ -1071,6 +1064,16 @@ async function startServer() {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
 }
+
+// Final error handler for both production and dev
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("[GLOBAL ERROR]:", err);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message || "Uncaught exception",
+    details: err.details || err.toString()
+  });
+});
 
 // Start server only if not being imported as a module (e.g. by Vercel)
 if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
