@@ -60,6 +60,24 @@ const authenticate = (req: any, res: any, next: any) => {
   }
 };
 
+// Supabase Guard Middleware
+const guard = (req: any, res: any, next: any) => {
+  if (!supabase) {
+    console.error("ERROR REAL EN VERCEL: Database client not available for route:", req.path);
+    return res.status(503).json({ 
+      error: "Base de datos no conectada", 
+      details: "No se pudieron cargar las variables de entorno de Supabase en el servidor (SUPABASE_URL o KEY faltantes)." 
+    });
+  }
+  next();
+};
+
+// Global Guard for all /api routes EXCEPT /api/health (which handles its own missing config message)
+app.use("/api", (req, res, next) => {
+  if (req.path === "/health") return next();
+  guard(req, res, next);
+});
+
 // Health check
 app.get("/api/health", async (req, res) => {
   try {
@@ -100,7 +118,7 @@ app.get("/api/health", async (req, res) => {
 });
 
 // Login API
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", guard, async (req, res) => {
   const { username, password } = req.body;
   
   try {
@@ -159,7 +177,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 // Users Management API
-app.get("/api/users", authenticate, async (req, res) => {
+app.get("/api/users", authenticate, guard, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("app_users")
@@ -227,7 +245,7 @@ app.delete("/api/users/:id", authenticate, async (req, res) => {
 });
 
 // Products API
-app.get("/api/products", authenticate, async (req, res) => {
+app.get("/api/products", authenticate, guard, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("products")
@@ -368,7 +386,7 @@ app.delete("/api/products/:id", authenticate, async (req, res) => {
 });
 
 // Sales API
-app.get("/api/sales", authenticate, async (req, res) => {
+app.get("/api/sales", authenticate, guard, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("sales")
@@ -703,7 +721,7 @@ app.delete("/api/sales/:id", authenticate, async (req, res) => {
 });
 
 // Expenses API
-app.get("/api/expenses", authenticate, async (req, res) => {
+app.get("/api/expenses", authenticate, guard, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("expenses")
@@ -760,7 +778,7 @@ app.delete("/api/expenses/:id", authenticate, async (req, res) => {
 });
 
 // Bulk Delete API
-app.post("/api/bulk-delete/:table", authenticate, async (req, res) => {
+app.post("/api/bulk-delete/:table", authenticate, guard, async (req, res) => {
   try {
     const { table } = req.params;
     const { ids } = req.body;
@@ -832,8 +850,18 @@ app.post("/api/bulk-delete/:table", authenticate, async (req, res) => {
   }
 });
 
+// Final error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("[GLOBAL ERROR]:", err);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message || "Uncaught exception",
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
 // Movements API
-app.get("/api/movements", authenticate, async (req, res) => {
+app.get("/api/movements", authenticate, guard, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("movements")

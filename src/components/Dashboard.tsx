@@ -248,7 +248,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                 <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_SERVICE_ROLE_KEY</code>.
               </li>
               <li>
-                <span className="font-bold text-white">Redeploy Obligatorio:</span> Después de guardar las variables, ve a la pestaña <b>Deployments</b> en Vercel, busca el último y selecciona <b>Redeploy</b>. Las variables de Vite se inyectan en tiempo de compilación.
+                <span className="font-bold text-white">Redeploy Obligatorio:</span> Después de configurar las variables, realiza un <b>Redeploy</b> en Vercel. Las variables de Vite NO se actualizan solas.
+              </li>
+              <li>
+                <span className="font-bold text-white">Error de JSON:</span> Si ves errores de "Unexpected token", el servidor está devolviendo un error de Vercel (HTML). Revisa la pestaña <b>Logs</b> en el dashboard de Vercel para ver el mensaje de error real.
               </li>
             </ol>
             <div className="pt-2 border-t border-white/5 opacity-60 italic">
