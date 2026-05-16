@@ -83,6 +83,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(timeoutId);
       setConnectionError(null);
 
+      // Fallback logic if any essential response is 404 or backend seems missing
+      const isMissingBackend = [prodsRes, salesRes, expRes, movRes].some(res => res.status === 404);
+      
+      if (isMissingBackend) {
+        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
+        if (isSupabaseConfigured) {
+            console.log("[DataProvider] Backend not found (404). Falling back to direct Supabase client.");
+            const [p, s, e, m] = await Promise.all([
+                supabase.from("products").select("*").order("nombre"),
+                supabase.from("sales").select("*").order("fecha_venta", { ascending: false }),
+                supabase.from("expenses").select("*").order("fecha_gasto", { ascending: false }),
+                supabase.from("movements").select("*").order("fecha", { ascending: false })
+            ]);
+            
+            if (p.data) setProducts(p.data);
+            if (s.data) setSales(s.data.map(item => ({ ...item, pagado: item.pagado ?? false })));
+            if (e.data) setExpenses(e.data);
+            if (m.data) setMovements(m.data);
+            
+            setLoading(false);
+            return;
+        }
+      }
+
       if (prodsRes.ok) {
         setProducts(await prodsRes.json());
       } else {
@@ -114,6 +138,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.error("Error fetching data:", err);
+      
+      // Try fallback on network error too
+      try {
+        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
+        if (isSupabaseConfigured) {
+          console.log("[DataProvider] Network error. Falling back to direct Supabase client.");
+          const [p, s, e, m] = await Promise.all([
+            supabase.from("products").select("*").order("nombre"),
+            supabase.from("sales").select("*").order("fecha_venta", { ascending: false }),
+            supabase.from("expenses").select("*").order("fecha_gasto", { ascending: false }),
+            supabase.from("movements").select("*").order("fecha", { ascending: false })
+          ]);
+          if (p.data) setProducts(p.data);
+          if (s.data) setSales(s.data.map(item => ({ ...item, pagado: item.pagado ?? false })));
+          if (e.data) setExpenses(e.data);
+          if (m.data) setMovements(m.data);
+          return;
+        }
+      } catch (fallbackErr) {
+        console.error("Fallback also failed:", fallbackErr);
+      }
+
       if (err.name === 'AbortError') {
         setConnectionError("Tiempo de espera agotado al conectar con el servidor.");
       } else {

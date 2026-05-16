@@ -8,22 +8,27 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-// Initialize Supabase Client
-const normalizedUrl = SUPABASE_URL.trim()
-  .replace(/\/$/, "")
-  .replace(/\/rest\/v1$/, "");
+// Initialize Supabase Client with better error handling
+const getSupabaseClient = () => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return null;
+  }
+  
+  const normalizedUrl = SUPABASE_URL.trim()
+    .replace(/\/$/, "")
+    .replace(/\/rest\/v1$/, "");
+    
+  return createClient(normalizedUrl, SUPABASE_SERVICE_ROLE_KEY);
+};
 
-if (!normalizedUrl || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("CRITICAL ERROR: Supabase environment variables are NOT set.");
-  console.error("Please add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your project secrets.");
-} else {
-  console.log("Initializing Supabase with Clean URL:", normalizedUrl);
+const supabase = getSupabaseClient();
+
+if (!supabase) {
+  console.warn("[BACKEND] Supabase client not initialized. Environment variables SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY are missing.");
 }
-
-const supabase = createClient(normalizedUrl, SUPABASE_SERVICE_ROLE_KEY);
 
 const AUTH_TOKEN = "glow-manager-session-true";
 const app = express();
@@ -46,8 +51,8 @@ const authenticate = (req: any, res: any, next: any) => {
 // Health check
 app.get("/api/health", async (req, res) => {
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return res.json({ status: "config_missing", message: "Supabase URL or Key is missing in environment variables." });
+    if (!supabase) {
+      return res.json({ status: "config_missing", message: "Supabase configuration is missing. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY." });
     }
 
     const { data: products, error: prodErr } = await supabase.from("products").select("id").limit(1);
@@ -86,6 +91,8 @@ app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   
   try {
+    if (!supabase) throw new Error("Database not connected");
+
     // Primero, verificamos contra la tabla de Supabase si existe
     const { data: user } = await supabase
       .from("app_users")

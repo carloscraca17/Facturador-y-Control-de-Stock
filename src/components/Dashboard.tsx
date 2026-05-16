@@ -227,20 +227,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           <div className="flex items-center gap-3">
             <AlertTriangle size={24} />
             <div>
-              <p className="font-bold text-lg">Error de Conexión en Vercel</p>
+              <p className="font-bold text-lg">Error de Disponibilidad</p>
               <p className="opacity-70 text-sm">{connectionError}</p>
             </div>
           </div>
           <div className="bg-black/20 p-4 rounded-xl space-y-3 text-xs">
-            <p className="font-bold uppercase tracking-widest opacity-50">Pasos para resolver:</p>
-            <ol className="list-decimal ml-4 space-y-2 opacity-80">
-              <li>Verifica que en el panel de Vercel (Settings &gt; Environment Variables) hayas agregado: 
-                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_URL</code> y 
-                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_SERVICE_ROLE_KEY</code>
-              </li>
-              <li><b>IMPORTANTE:</b> Después de agregar las variables, debes ir a la pestaña "Deployments" y hacer un <b>Redeploy</b> (o un nuevo push) para que Vercel las reconozca.</li>
-              <li>Asegúrate de no tener espacios extra al final de las claves.</li>
-            </ol>
+            <p className="opacity-80">
+              Parece que hay un problema al conectar con el servidor. Si acabas de configurar las variables de entorno en Vercel, asegúrate de realizar un <b>Redeploy</b> para que los cambios surtan efecto.
+            </p>
           </div>
         </motion.div>
       )}

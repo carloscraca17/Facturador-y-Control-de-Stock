@@ -1,13 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || "")
-  .trim()
-  .replace(/\/$/, "")
-  .replace(/\/rest\/v1$/, "");
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+// Vite uses import.meta.env
+// Next.js uses process.env.NEXT_PUBLIC_...
+// We handle both for compatibility and user preference
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Supabase credentials missing. Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in project secrets.");
-}
+const supabaseUrl = 
+  import.meta.env.VITE_SUPABASE_URL || 
+  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) || 
+  "";
+
+const supabaseAnonKey = 
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 
+  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) || 
+  "";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
