@@ -179,8 +179,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const unpaidTotalCalculated = sales.reduce((acc, s) => {
     if (s.pagado) return acc;
-    return acc + (Math.max(0, (s.ingreso_bruto || 0) - (s.pago_parcial || 0)));
+    return acc + (Math.max(0, (s.ingreso_bruto || 0) - (Number(s.pago_parcial) || 0)));
   }, 0);
+
+  const isDisconnected = sales.length === 0 && products.length === 0 && !loading;
 
   const metrics = [
     { 
@@ -215,6 +217,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   return (
     <div className="space-y-8 p-4 md:p-6 lg:p-10 max-w-7xl mx-auto pb-24 md:pb-10">
+      {isDisconnected && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex items-center gap-3 text-amber-400 text-sm"
+        >
+          <AlertTriangle size={18} />
+          <div>
+            <p className="font-bold">Modo Desconectado / Demo</p>
+            <p className="opacity-70 text-xs text-balance">No se pudo conectar con el servidor. Si estás en Vercel, asegúrate de configurar las variables de entorno de Supabase. Mientras tanto, puedes explorar la interfaz con las credenciales admin / admin123.</p>
+          </div>
+        </motion.div>
+      )}
       {isScanning && <Scanner onClose={() => setIsScanning(false)} />}
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
