@@ -247,17 +247,22 @@ app.delete("/api/users/:id", authenticate, async (req, res) => {
 // Products API
 app.get("/api/products", authenticate, guard, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 50;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await supabase!
       .from("products")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("nombre", { ascending: true })
-      .limit(200);
+      .range(from, to);
     
     if (error) {
       console.error("Supabase GET Products Error Details:", JSON.stringify(error, null, 2));
       return res.status(error.code === 'PGRST116' ? 404 : 500).json({ error: error.message });
     }
-    res.json(data);
+    res.json({ data, total: count });
   } catch (error: any) {
     console.error("ERROR REAL EN VERCEL (GET Products):", error);
     res.status(500).json({ error: error.message });
@@ -388,17 +393,22 @@ app.delete("/api/products/:id", authenticate, async (req, res) => {
 // Sales API
 app.get("/api/sales", authenticate, guard, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await supabase!
       .from("sales")
-      .select("*")
+      .select("*", { count: "exact" })
       .order("fecha_venta", { ascending: false })
-      .limit(100);
+      .range(from, to);
 
     if (error) {
        console.error("ERROR REAL EN VERCEL (GET Sales):", error);
        throw error;
     }
-    res.json(data);
+    res.json({ data, total: count });
   } catch (error: any) {
     console.error("ERROR REAL EN VERCEL (Catch Sales):", error);
     res.status(500).json({ error: error.message });
@@ -847,6 +857,45 @@ app.post("/api/bulk-delete/:table", authenticate, guard, async (req, res) => {
   } catch (error: any) {
     console.error(`[BULK DELETE] Fatal error:`, error);
     res.status(500).json({ error: error.message, details: error });
+  }
+});
+
+// Stats API
+app.get("/api/stats", authenticate, guard, async (req, res) => {
+  try {
+    // Optimization: fetch only necessary columns for stats calculation
+    const [salesRes, productsRes] = await Promise.all([
+      supabase!.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca"),
+      supabase!.from("products").select("stock_actual, stock_minimo")
+    ]);
+
+    const sales = salesRes.data || [];
+    const products = productsRes.data || [];
+
+    const totalRevenue = sales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+    const totalNet = sales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);
+    
+    // For profit, we really need cost. Let's estimate it if critical or fetch expenses.
+    // If we want real profit including expenses:
+    const { data: expenses } = await supabase!.from("expenses").select("monto");
+    const totalExpenses = (expenses || []).reduce((acc, e) => acc + (Number(e.monto) || 0), 0);
+
+    const unpaidTotal = sales.reduce((acc, s) => {
+      if (s.pagado) return acc;
+      return acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0)));
+    }, 0);
+
+    res.json({
+      totalRevenue,
+      realProfit: totalNet - totalExpenses,
+      stockAlerts: products.filter(p => p.stock_actual <= p.stock_minimo).length,
+      arcaPending: sales.filter(s => s.estado_arca === "Pendiente").length,
+      salesCount: sales.length,
+      unpaidTotal
+    });
+  } catch (err: any) {
+    console.error("[STATS] Error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

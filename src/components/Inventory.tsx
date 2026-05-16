@@ -1,10 +1,23 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Search, Plus, Package, Edit, Trash2, Filter, ArrowUpDown, Loader2 } from "lucide-react";
+import { 
+  Search, 
+  Plus, 
+  Package, 
+  Edit, 
+  Trash2, 
+  Filter, 
+  ArrowUpDown, 
+  Loader2,
+  ChevronLeft,
+  ChevronRight 
+} from "lucide-react";
 import { useData } from "./DataProvider";
 
 export const Inventory: React.FC = () => {
-  const { products, setProducts, refreshData, token } = useData();
+  const { products, setProducts, productsTotal, fetchProducts, refreshData, token } = useData();
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 50;
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<"nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual" | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -325,7 +338,7 @@ export const Inventory: React.FC = () => {
       });
 
       if (response.ok) {
-        await refreshData();
+        await fetchProducts(page, itemsPerPage);
         resetForm();
       } else {
         const errData = await response.json();
@@ -336,6 +349,16 @@ export const Inventory: React.FC = () => {
       alert(`Error al guardar producto: ${err.message}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const totalPages = Math.ceil(productsTotal / itemsPerPage);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
+      fetchProducts(newPage, itemsPerPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -542,6 +565,52 @@ export const Inventory: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-8">
+          <button 
+            onClick={() => handlePageChange(page - 1)}
+            disabled={page === 1}
+            className="p-3 bg-white/5 border border-white/10 rounded-xl text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          
+          <div className="flex items-center gap-2">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum = page;
+              if (page <= 3) pageNum = i + 1;
+              else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
+              else pageNum = page - 2 + i;
+              
+              if (pageNum < 1 || pageNum > totalPages) return null;
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  className={`w-10 h-10 rounded-xl text-xs font-bold transition-all ${
+                    page === pageNum 
+                      ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" 
+                      : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          <button 
+            onClick={() => handlePageChange(page + 1)}
+            disabled={page === totalPages}
+            className="p-3 bg-white/5 border border-white/10 rounded-xl text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      )}
 
       {/* Bulk Action Bar */}
       <AnimatePresence>

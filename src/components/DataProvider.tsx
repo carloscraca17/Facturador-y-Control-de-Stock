@@ -16,6 +16,10 @@ interface DataContextType {
   token: string | null;
   connectionError: string | null;
   refreshData: () => Promise<void>;
+  fetchProducts: (page?: number, limit?: number) => Promise<void>;
+  fetchSales: (page?: number, limit?: number) => Promise<void>;
+  productsTotal: number;
+  salesTotal: number;
   login: (token: string, user: AppUser) => void;
   logout: () => void;
 }
@@ -25,7 +29,9 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsTotal, setProductsTotal] = useState(0);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [salesTotal, setSalesTotal] = useState(0);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -62,6 +68,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const fetchProducts = async (page = 1, limit = 50) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/products?page=${page}&limit=${limit}`, { 
+        headers: { "Authorization": token } 
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setProducts(result.data);
+        setProductsTotal(result.total);
+      }
+    } catch (err) {
+      console.error("Error fetching products:", err);
+    }
+  };
+
+  const fetchSales = async (page = 1, limit = 20) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/sales?page=${page}&limit=${limit}`, { 
+        headers: { "Authorization": token } 
+      });
+      if (res.ok) {
+        const result = await res.json();
+        const formattedSales = result.data.map((s: any) => ({
+          ...s,
+          ingreso_bruto: Number(s.ingreso_bruto) || 0,
+          ingreso_neto: Number(s.ingreso_neto) || 0,
+          descuento: Number(s.descuento) || 0,
+          pagado: s.pagado ?? false,
+          pago_parcial: Number(s.pago_parcial) || 0
+        }));
+        setSales(formattedSales);
+        setSalesTotal(result.total);
+      }
+    } catch (err) {
+      console.error("Error fetching sales:", err);
+    }
+  };
+
   const fetchData = async () => {
     if (!token) {
       setLoading(false);
@@ -69,13 +115,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const headers = { "Authorization": token };
-      const [prodsRes, salesRes, expRes, movRes] = await Promise.all([
-        fetch("/api/products", { headers, signal: controller.signal }),
-        fetch("/api/sales", { headers, signal: controller.signal }),
+      const [statsRes, prodsRes, salesRes, expRes, movRes] = await Promise.all([
+        fetch("/api/stats", { headers, signal: controller.signal }),
+        fetch("/api/products?page=1&limit=50", { headers, signal: controller.signal }),
+        fetch("/api/sales?page=1&limit=20", { headers, signal: controller.signal }),
         fetch("/api/expenses", { headers, signal: controller.signal }),
         fetch("/api/movements", { headers, signal: controller.signal })
       ]);
@@ -83,43 +130,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(timeoutId);
       setConnectionError(null);
 
-      // Fallback logic if any essential response is 404 or backend seems missing
-      const isMissingBackend = [prodsRes, salesRes, expRes, movRes].some(res => res.status === 404);
-      
-      if (isMissingBackend) {
-        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
-        if (isSupabaseConfigured) {
-            console.log("[DataProvider] Backend not found (404). Falling back to direct Supabase client.");
-            const [p, s, e, m] = await Promise.all([
-                supabase.from("products").select("*").order("nombre"),
-                supabase.from("sales").select("*").order("fecha_venta", { ascending: false }),
-                supabase.from("expenses").select("*").order("fecha_gasto", { ascending: false }),
-                supabase.from("movements").select("*").order("fecha", { ascending: false })
-            ]);
-            
-            if (p.data) setProducts(p.data);
-            if (s.data) setSales(s.data.map(item => ({ ...item, pagado: item.pagado ?? false })));
-            if (e.data) setExpenses(e.data);
-            if (m.data) setMovements(m.data);
-            
-            setLoading(false);
-            return;
-        }
-      }
+      if (statsRes.ok) setStats(await statsRes.json());
 
       if (prodsRes.ok) {
-        setProducts(await prodsRes.json());
-      } else {
-        const err = await prodsRes.json();
-        console.error("Products error:", err.error);
-        if (err.error?.includes("Invalid path")) {
-            alert("Error: Las tablas no parecen existir en Supabase. Por favor ejecuta el contenido de 'supabase_schema.sql' en el editor SQL de Supabase.");
-        }
+        const result = await prodsRes.json();
+        setProducts(result.data);
+        setProductsTotal(result.total);
       }
-
+      
       if (salesRes.ok) {
-        const rawSales = await salesRes.json();
-        setSales(rawSales.map((s: any) => ({
+        const result = await salesRes.json();
+        setSales(result.data.map((s: any) => ({
           ...s,
           ingreso_bruto: Number(s.ingreso_bruto) || 0,
           ingreso_neto: Number(s.ingreso_neto) || 0,
@@ -127,44 +148,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           pagado: s.pagado ?? false,
           pago_parcial: Number(s.pago_parcial) || 0
         })));
+        setSalesTotal(result.total);
       }
-      if (expRes.ok) setExpenses(await expRes.json());
       
-      if (movRes.ok) {
-        setMovements(await movRes.json());
-      } else {
-        const err = await movRes.json();
-        console.error("Movements error:", err);
-      }
+      if (expRes.ok) setExpenses(await expRes.json());
+      if (movRes.ok) setMovements(await movRes.json());
+
     } catch (err: any) {
       console.error("Error fetching data:", err);
-      
-      // Try fallback on network error too
-      try {
-        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
-        if (isSupabaseConfigured) {
-          console.log("[DataProvider] Network error. Falling back to direct Supabase client.");
-          const [p, s, e, m] = await Promise.all([
-            supabase.from("products").select("*").order("nombre"),
-            supabase.from("sales").select("*").order("fecha_venta", { ascending: false }),
-            supabase.from("expenses").select("*").order("fecha_gasto", { ascending: false }),
-            supabase.from("movements").select("*").order("fecha", { ascending: false })
-          ]);
-          if (p.data) setProducts(p.data);
-          if (s.data) setSales(s.data.map(item => ({ ...item, pagado: item.pagado ?? false })));
-          if (e.data) setExpenses(e.data);
-          if (m.data) setMovements(m.data);
-          return;
-        }
-      } catch (fallbackErr) {
-        console.error("Fallback also failed:", fallbackErr);
-      }
-
-      if (err.name === 'AbortError') {
-        setConnectionError("Tiempo de espera agotado al conectar con el servidor (AbortError).");
-      } else {
-        setConnectionError(`Error de conexion: ${err.message || JSON.stringify(err)}`);
-      }
+      setConnectionError(`Error de conexion: ${err.message || JSON.stringify(err)}`);
     } finally {
       setLoading(false);
     }
@@ -174,35 +166,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchData();
   }, [token]);
 
-  useEffect(() => {
-    const totalGross = sales.reduce((acc, s) => acc + (s.ingreso_bruto || 0), 0);
-    const totalNet = sales.reduce((acc, s) => acc + (s.ingreso_neto || 0), 0);
-    const totalExpenses = expenses.reduce((acc, e) => acc + (e.monto || 0), 0);
-    const unpaidTotal = sales.reduce((acc, s) => {
-      if (s.pagado) return acc;
-      const total = s.ingreso_bruto || 0;
-      const paid = s.pago_parcial || 0;
-      return acc + (total - paid);
-    }, 0);
-    
-    setStats({
-      totalRevenue: totalGross,
-      realProfit: totalNet - totalExpenses,
-      stockAlerts: products.filter(p => p.stock_actual <= p.stock_minimo).length,
-      arcaPending: sales.filter(s => s.estado_arca === "Pendiente").length,
-      salesCount: sales.length,
-      unpaidTotal,
-    });
-  }, [sales, products, expenses]);
-
   return (
     <DataContext.Provider value={{ 
       user: user as any, 
       loading, 
       products, 
       setProducts,
+      productsTotal,
       sales, 
       setSales,
+      salesTotal,
       expenses, 
       setExpenses,
       movements,
@@ -211,6 +184,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       token,
       connectionError,
       refreshData: fetchData,
+      fetchProducts,
+      fetchSales,
       login,
       logout: logoutAction
     }}>

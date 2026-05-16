@@ -73,3 +73,8 @@ export interface BusinessStats {
   salesCount: number;
   unpaidTotal: number;
 }
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+}

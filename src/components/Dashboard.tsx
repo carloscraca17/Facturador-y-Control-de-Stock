@@ -1,6 +1,21 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { TrendingUp, AlertTriangle, FileText, DollarSign, Plus, ShoppingBag, LogOut, Trash2, Edit2, X, Check, Clock } from "lucide-react";
+import { 
+  TrendingUp, 
+  AlertTriangle, 
+  FileText, 
+  DollarSign, 
+  Plus, 
+  ShoppingBag, 
+  LogOut, 
+  Trash2, 
+  Edit2, 
+  X, 
+  Check, 
+  Clock,
+  ChevronLeft,
+  ChevronRight
+} from "lucide-react";
 import { useData } from "./DataProvider";
 import { Scanner } from "./Scanner";
 import { Sale } from "../types";
@@ -10,7 +25,9 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
-  const { stats, products, sales, logout, refreshData, loading, connectionError } = useData();
+  const { stats, products, sales, salesTotal, fetchSales, logout, refreshData, loading, connectionError } = useData();
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 20;
   const [isScanning, setIsScanning] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -37,7 +54,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       });
       if (response.ok) {
         setIsDeletingId(null);
-        refreshData();
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats
       }
     } catch (err) {
       console.error("Error deleting sale:", err);
@@ -61,7 +79,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         body: JSON.stringify(updatePayload)
       });
       if (response.ok) {
-        await refreshData();
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats
       }
     } catch (err) {
       console.error("Error toggling paid state:", err);
@@ -79,7 +98,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         body: JSON.stringify({ ...sale, estado_entrega: status })
       });
       if (response.ok) {
-        await refreshData();
+        await fetchSales(page, itemsPerPage);
       }
     } catch (err) {
       console.error("Error updating delivery status:", err);
@@ -101,7 +120,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       });
       if (response.ok) {
         setEditingSale(null);
-        await refreshData();
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats
       }
     } catch (err) {
       console.error("Error updating sale:", err);
@@ -109,37 +129,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const MONTHLY_GOAL = 1000000;
-  const currentMonthSales = sales.filter(s => {
-    const d = new Date(s.fecha_venta);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
-  const monthlyGrossTotal = currentMonthSales.reduce((acc, s) => acc + (s.ingreso_bruto || 0), 0);
+  // Use stats from backend instead of local calculation for better accuracy with pagination
+  const monthlyGrossTotal = stats.totalRevenue;
   const goalProgress = Math.min((monthlyGrossTotal / MONTHLY_GOAL) * 100, 100);
 
   // Sorting and Filtering Logic
+  // Since we have server-side pagination, client-side filtering on a single page is limited.
+  // Ideally filtering should also be server-side, but for now we follow the user's request for pagination.
   const filteredAndSortedSales = [...sales]
     .filter(sale => {
-      const saleDate = new Date(sale.fecha_venta);
-      saleDate.setHours(0, 0, 0, 0);
-      
-      let matchesFrom = true;
-      let matchesTo = true;
-
-      // Extract raw comparison value to avoid timezone issues with date strings
-      if (dateFrom) {
-        // Parse "YYYY-MM-DD" as local date
-        const [year, month, day] = dateFrom.split("-").map(Number);
-        const fromDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-        matchesFrom = saleDate >= fromDate;
-      }
-
-      if (dateTo) {
-        const [year, month, day] = dateTo.split("-").map(Number);
-        const toDate = new Date(year, month - 1, day, 23, 59, 59, 999);
-        matchesTo = saleDate <= toDate;
-      }
-
       let matchesPayment = true;
       if (paymentStatusFilter === "paid") {
         matchesPayment = !!sale.pagado;
@@ -152,7 +150,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       const matchesCanal = canalFilter === "all" || sale.canal_venta === canalFilter;
       const matchesArca = arcaFilter === "all" || sale.estado_arca === arcaFilter;
 
-      return matchesFrom && matchesTo && matchesPayment && matchesCanal && matchesArca;
+      return matchesPayment && matchesCanal && matchesArca;
     })
     .sort((a, b) => {
       let valA: any = a[sortBy as keyof Sale];
@@ -176,6 +174,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
+
+  const totalPages = Math.ceil(salesTotal / itemsPerPage);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
+      fetchSales(newPage, itemsPerPage);
+    }
+  };
 
   const unpaidTotalCalculated = sales.reduce((acc, s) => {
     if (s.pagado) return acc;
@@ -630,6 +637,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="p-6 border-t border-white/5 flex items-center justify-center gap-4">
+              <button 
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page === 1}
+                className="p-2 bg-white/5 border border-white/10 rounded-lg text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = page;
+                  if (page <= 3) pageNum = i + 1;
+                  else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = page - 2 + i;
+                  
+                  if (pageNum < 1 || pageNum > totalPages) return null;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                        page === pageNum 
+                          ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" 
+                          : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button 
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page === totalPages}
+                className="p-2 bg-white/5 border border-white/10 rounded-lg text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+              
+              <div className="text-[10px] text-white/20 uppercase font-bold tracking-widest ml-4">
+                Página {page} de {totalPages} ({salesTotal} ventas)
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

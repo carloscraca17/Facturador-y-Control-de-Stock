@@ -30,12 +30,27 @@ export function AccessControl() {
       const res = await fetch("/api/users", {
         headers: { "Authorization": "glow-manager-session-true" }
       });
+      
+      const contentType = res.headers.get("content-type");
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Error al cargar usuarios");
+        if (contentType && contentType.includes("application/json")) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || `Error ${res.status}: Fallo al cargar usuarios`);
+        } else {
+            const textError = await res.text();
+            console.error("Non-JSON Server Error:", textError);
+            throw new Error(`Error ${res.status} del Servidor: ${textError.slice(0, 100)}...`);
+        }
       }
-      const data = await res.json();
-      setUsers(data);
+      
+      if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setUsers(data);
+      } else {
+          const text = await res.text();
+          console.error("Received non-JSON response:", text);
+          throw new Error("El servidor no devolvió JSON válido. Posible error de configuración en Vercel.");
+      }
     } catch (err: any) {
       console.error("Fetch Users Error:", err);
       let msg = err.message;
