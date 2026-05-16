@@ -10,8 +10,10 @@ const envKey = (typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_SUPABA
 const supabaseUrl = envUrl || import.meta.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = envKey || import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
+console.log(`[FRONTEND] Supabase Config Check: URL_Present=${!!supabaseUrl}, KEY_Present=${!!supabaseAnonKey}`);
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("CRITICAL: Supabase variables missing in Frontend environment. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  console.error("CRITICAL: Supabase variables missing in Frontend environment. Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel.");
 }
 
 // Always pass arguments explicitly to createClient
