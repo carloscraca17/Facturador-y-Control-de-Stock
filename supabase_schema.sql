@@ -68,13 +68,26 @@ CREATE TABLE movements (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. SEGURIDAD
+-- 6. TABLA DE USUARIOS DE LA APP
+CREATE TABLE app_users (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user', -- 'admin', 'user'
+  permissions JSONB DEFAULT '[]', -- ['dashboard', 'inventory', 'financials', 'access']
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. SEGURIDAD
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON movements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON app_users FOR ALL USING (true) WITH CHECK (true);

@@ -1,21 +1,26 @@
 import React from "react";
-import { LayoutDashboard, Box, Wallet, LogOut } from "lucide-react";
+import { LayoutDashboard, Box, Wallet, LogOut, ShieldCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { useData } from "./DataProvider";
 
 interface SidebarProps {
-  currentPage: "dashboard" | "inventory" | "financials";
-  onPageChange: (page: "dashboard" | "inventory" | "financials") => void;
+  currentPage: "dashboard" | "inventory" | "financials" | "access";
+  onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) => {
-  const { logout } = useData();
+  const { logout, user } = useData();
 
   const menuItems = [
     { id: "dashboard", icon: LayoutDashboard, label: "Panel" },
     { id: "inventory", icon: Box, label: "Inventario" },
     { id: "financials", icon: Wallet, label: "Finanzas" },
-  ];
+    { id: "access", icon: ShieldCheck, label: "Acceso" },
+  ].filter(item => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    return user.permissions.includes(item.id);
+  });
 
   return (
     <>

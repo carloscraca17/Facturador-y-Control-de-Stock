@@ -54,17 +54,19 @@ app.get("/api/health", async (req, res) => {
     const { data: sales, error: saleErr } = await supabase.from("sales").select("id").limit(1);
     const { data: expenses, error: expErr } = await supabase.from("expenses").select("id").limit(1);
     const { data: movements, error: movErr } = await supabase.from("movements").select("id").limit(1);
+    const { data: users, error: userErr } = await supabase.from("app_users").select("id").limit(1);
 
-    if (prodErr || saleErr || expErr || movErr) {
+    if (prodErr || saleErr || expErr || movErr || userErr) {
       return res.json({ 
         status: "table_error", 
         details: { 
           products: prodErr?.message || "OK", 
           sales: saleErr?.message || "OK", 
           expenses: expErr?.message || "OK",
-          movements: movErr?.message || "OK"
+          movements: movErr?.message || "OK",
+          app_users: userErr?.message || "OK"
         },
-        message: "Tables might be missing. Please run the SQL in supabase_schema.sql in your Supabase SQL Editor."
+        message: "Tables might be missing. Please run the updated SQL in supabase_schema.sql in your Supabase SQL Editor."
       });
     }
 
@@ -80,12 +82,127 @@ app.get("/api/health", async (req, res) => {
 });
 
 // Login API
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
-  if (username === "admin" && password === "admin123") {
-    res.json({ token: AUTH_TOKEN });
-  } else {
-    res.status(401).json({ error: "Credenciales inválidas" });
+  
+  try {
+    // Primero, verificamos contra la tabla de Supabase si existe
+    const { data: user } = await supabase
+      .from("app_users")
+      .select("*")
+      .eq("username", username)
+      .eq("password", password)
+      .maybeSingle();
+
+    if (user) {
+      return res.json({ 
+        token: AUTH_TOKEN, 
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          role: user.role,
+          permissions: user.permissions 
+        } 
+      });
+    }
+
+    // Fallback para admin inicial si la tabla está vacía o hay error de conexión
+    if (username === "admin" && password === "admin123") {
+      res.json({ 
+        token: AUTH_TOKEN,
+        user: { 
+          id: "admin", 
+          username: "admin", 
+          role: "admin",
+          permissions: ["dashboard", "inventory", "financials", "access"]
+        } 
+      });
+    } else {
+      res.status(401).json({ error: "Credenciales inválidas" });
+    }
+  } catch (err) {
+    // Si falla Supabase, permitimos admin fallback
+    if (username === "admin" && password === "admin123") {
+      res.json({ 
+        token: AUTH_TOKEN,
+        user: { 
+          id: "admin", 
+          username: "admin", 
+          role: "admin",
+          permissions: ["dashboard", "inventory", "financials", "access"]
+        } 
+      });
+    } else {
+      res.status(500).json({ error: "Error de servidor al iniciar sesión" });
+    }
+  }
+});
+
+// Users Management API
+app.get("/api/users", authenticate, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("app_users")
+      .select("*")
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+       console.error("[USERS] Supabase Error:", error);
+       return res.status(error.code === 'PGRST116' ? 404 : 500).json({ error: error.message });
+    }
+    res.json(data);
+  } catch (error: any) {
+    console.error("[USERS] Catch Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/users", authenticate, async (req, res) => {
+  try {
+    const body = req.body;
+    const { data, error } = await supabase
+      .from("app_users")
+      .insert([body])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/users/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body;
+    const { data, error } = await supabase
+      .from("app_users")
+      .update(body)
+      .eq("id", id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/users/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase
+      .from("app_users")
+      .delete()
+      .eq("id", id);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

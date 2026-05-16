@@ -3,6 +3,7 @@ import { DataProvider, useData } from "./components/DataProvider";
 import { Dashboard } from "./components/Dashboard";
 import { Inventory } from "./components/Inventory";
 import { Financials } from "./components/Financials";
+import { AccessControl } from "./components/AccessControl";
 import { Sidebar } from "./components/Sidebar";
 import { BusinessChat } from "./components/BusinessChat";
 import { LogIn, Sparkles, Loader2, User, Lock, AlertCircle } from "lucide-react";
@@ -10,7 +11,7 @@ import { motion } from "motion/react";
 
 const MainContent: React.FC = () => {
   const { user, loading, login } = useData();
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "inventory" | "financials">("dashboard");
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "inventory" | "financials" | "access">("dashboard");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,8 +30,8 @@ const MainContent: React.FC = () => {
       });
 
       if (response.ok) {
-        const { token: newToken } = await response.json();
-        login(newToken);
+        const { token: newToken, user: userData } = await response.json();
+        login(newToken, userData);
       } else {
         const data = await response.json();
         setError(data.error || "Credenciales inválidas");
@@ -41,7 +42,12 @@ const MainContent: React.FC = () => {
       // Fallback para Vercel o servidores caídos
       if (username === "admin" && password === "admin123") {
         console.warn("Usando login de respaldo (servidor desconectado)");
-        login("glow-manager-session-true");
+        login("glow-manager-session-true", {
+          id: "admin",
+          username: "admin",
+          role: "admin",
+          permissions: ["dashboard", "inventory", "financials", "access"]
+        });
       } else {
         setError("Error de conexión con el servidor. Verifica tus credenciales.");
       }
@@ -138,6 +144,7 @@ const MainContent: React.FC = () => {
           {currentPage === "dashboard" && <Dashboard onPageChange={setCurrentPage} />}
           {currentPage === "inventory" && <Inventory />}
           {currentPage === "financials" && <Financials />}
+          {currentPage === "access" && <AccessControl />}
         </main>
       </div>
       <BusinessChat />

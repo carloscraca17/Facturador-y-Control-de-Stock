@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Product, Sale, Expense, BusinessStats, Movement } from "../types";
+import { Product, Sale, Expense, BusinessStats, Movement, AppUser } from "../types";
 
 interface DataContextType {
-  user: { uid: string } | null;
+  user: AppUser | null;
   loading: boolean;
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -15,7 +15,7 @@ interface DataContextType {
   stats: BusinessStats;
   token: string | null;
   refreshData: () => Promise<void>;
-  login: (token: string) => void;
+  login: (token: string, user: AppUser) => void;
   logout: () => void;
 }
 
@@ -28,6 +28,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [token, setToken] = useState<string | null>(localStorage.getItem("glow_token"));
+  const [user, setUser] = useState<AppUser | null>(() => {
+    const saved = localStorage.getItem("glow_user");
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [stats, setStats] = useState<BusinessStats>({
     totalRevenue: 0,
     realProfit: 0,
@@ -37,16 +46,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     unpaidTotal: 0,
   });
 
-  const user = token ? { uid: "admin" } : null;
-
-  const login = (newToken: string) => {
+  const login = (newToken: string, newUser: AppUser) => {
     localStorage.setItem("glow_token", newToken);
+    localStorage.setItem("glow_user", JSON.stringify(newUser));
     setToken(newToken);
+    setUser(newUser);
   };
 
   const logoutAction = () => {
     localStorage.removeItem("glow_token");
+    localStorage.removeItem("glow_user");
     setToken(null);
+    setUser(null);
   };
 
   const fetchData = async () => {

@@ -56,6 +56,15 @@ export interface Expense {
   moneda?: "ARS" | "USD";
 }
 
+export interface AppUser {
+  id: string;
+  username: string;
+  password?: string;
+  role: "admin" | "user";
+  permissions: string[];
+  created_at?: string;
+}
+
 export interface BusinessStats {
   totalRevenue: number;
   realProfit: number;

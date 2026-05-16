@@ -6,11 +6,11 @@ import { Scanner } from "./Scanner";
 import { Sale } from "../types";
 
 interface DashboardProps {
-  onPageChange: (page: "dashboard" | "inventory") => void;
+  onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
-  const { stats, products, sales, logout, refreshData } = useData();
+  const { stats, products, sales, logout, refreshData, loading } = useData();
   const [isScanning, setIsScanning] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
