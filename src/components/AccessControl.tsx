@@ -55,7 +55,7 @@ export function AccessControl() {
       console.error("Fetch Users Error:", err);
       let msg = err.message;
       if (msg.includes("app_users") || msg.includes("schema cache")) {
-        msg = "Falta la tabla 'app_users' en Supabase. Por favor, ejecuta el script SQL desde el botón de ayuda abajo.";
+        msg = "Error de conexión con la tabla de usuarios.";
       }
       setError(msg);
     } finally {
@@ -146,36 +146,12 @@ export function AccessControl() {
       </header>
 
       {error && (
-        <div className="space-y-4">
-          <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-2xl flex flex-col gap-4 text-rose-400">
-            <div className="flex items-center gap-3 text-sm">
-              <AlertCircle size={18} />
-              <p className="font-bold">{error}</p>
-              <button onClick={() => setError(null)} className="ml-auto opacity-50 hover:opacity-100 transition-opacity"><X size={14}/></button>
-            </div>
-            
-            {(error.includes("app_users") || error.includes("schema cache")) && (
-              <div className="bg-black/20 p-4 rounded-xl space-y-3">
-                <p className="text-[11px] text-white/60 leading-relaxed">
-                  Para activar esta sección, copia el siguiente comando SQL y ejecútalo en el <b>SQL Editor</b> de tu panel de Supabase:
-                </p>
-                <div className="bg-black/40 p-3 rounded-lg font-mono text-[9px] text-emerald-400 select-all border border-white/5 break-all">
-                  CREATE TABLE app_users ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', permissions JSONB DEFAULT '[]', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW() );
-                  ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
-                  CREATE POLICY "Allow all" ON app_users FOR ALL USING (true) WITH CHECK (true);
-                </div>
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(`CREATE TABLE app_users ( id UUID DEFAULT gen_random_uuid() PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', permissions JSONB DEFAULT '[]', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW() ); ALTER TABLE app_users ENABLE ROW LEVEL SECURITY; CREATE POLICY "Allow all" ON app_users FOR ALL USING (true) WITH CHECK (true);`);
-                    alert("¡Copiado al portapapeles!");
-                  }}
-                  className="w-full py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/30 transition-all border border-emerald-500/20"
-                >
-                  Copiar Código SQL
-                </button>
-              </div>
-            )}
+        <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex items-center justify-between text-rose-400 text-sm">
+          <div className="flex items-center gap-3">
+            <AlertCircle size={18} />
+            <p className="font-bold">{error}</p>
           </div>
+          <button onClick={() => setError(null)} className="opacity-50 hover:opacity-100 transition-opacity"><X size={14}/></button>
         </div>
       )}
 
