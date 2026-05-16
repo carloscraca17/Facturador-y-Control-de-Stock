@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Products
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isValidId(productId) &&
+        incoming().sku_barcode is string &&
+        incoming().nombre is string &&
+        incoming().costo_unitario is number &&
+        incoming().precio_venta is number;
+      allow update: if isValidId(productId) &&
+        (incoming().diff(resource.data).affectedKeys().hasOnly(['stock_actual', 'updated_at']) || 
+         incoming().nombre is string); 
+      allow delete: if true; // In a real app, we'd restrict this
+    }
+
+    // Sales
+    match /sales/{saleId} {
+      allow read: if true;
+      allow create: if isValidId(saleId) &&
+        incoming().productos is list &&
+        incoming().total is number;
+    }
+
+    // Expenses
+    match /expenses/{expenseId} {
+      allow read: if true;
+      allow create: if isValidId(expenseId) &&
+        incoming().monto is number;
+    }
+    
+    // Test collection (for health check)
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+  }
+}

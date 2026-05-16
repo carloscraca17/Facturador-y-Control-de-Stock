@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Inventory product",
+      "type": "object",
+      "properties": {
+        "sku_barcode": { "type": "string" },
+        "nombre": { "type": "string" },
+        "categoria": { "type": "string" },
+        "costo_unitario": { "type": "number" },
+        "precio_venta": { "type": "number" },
+        "stock_actual": { "type": "number" },
+        "stock_minimo": { "type": "number" },
+        "detalles": { "type": "string" },
+        "userId": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sku_barcode", "nombre", "categoria", "costo_unitario", "precio_venta", "stock_actual"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A sales transaction",
+      "type": "object",
+      "properties": {
+        "productos": { "type": "array" },
+        "total": { "type": "number" },
+        "metodo_pago": { "type": "string" },
+        "fecha_venta": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productos", "total", "metodo_pago"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Business expense",
+      "type": "object",
+      "properties": {
+        "descripcion": { "type": "string" },
+        "monto": { "type": "number" },
+        "categoria": { "type": "string" },
+        "fecha_gasto": { "type": "string", "format": "date-time" }
+      },
+      "required": ["descripcion", "monto", "categoria"]
+    }
+  },
+  "firestore": {
+    "products": {
+      "schema": "Product",
+      "description": "Collection of products"
+    },
+    "sales": {
+      "schema": "Sale",
+      "description": "Collection of sales"
+    },
+    "expenses": {
+      "schema": "Expense",
+      "description": "Collection of expenses"
+    }
+  }
+}
