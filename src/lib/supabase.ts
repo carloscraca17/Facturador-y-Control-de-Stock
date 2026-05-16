@@ -5,14 +5,20 @@ import { createClient } from "@supabase/supabase-js";
 // We handle both for compatibility and user preference
 
 const supabaseUrl = 
-  import.meta.env.VITE_SUPABASE_URL || 
   (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) || 
+  (typeof process !== "undefined" ? process.env.SUPABASE_URL : undefined) || 
+  import.meta.env.VITE_SUPABASE_URL || 
   "";
 
 const supabaseAnonKey = 
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 
   (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) || 
+  (typeof process !== "undefined" ? process.env.SUPABASE_ANON_KEY : undefined) || 
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 
   "";
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("CRITICAL: Supabase variables missing in Frontend environment.");
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

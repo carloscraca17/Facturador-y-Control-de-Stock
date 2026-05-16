@@ -11,23 +11,30 @@ dotenv.config();
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-// Initialize Supabase Client with better error handling
+// Initialize Supabase Client with strict validation
 const getSupabaseClient = () => {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("ERROR REAL EN VERCEL: Faltan las variables de entorno de Supabase (SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY/ANON_KEY).");
     return null;
   }
   
-  const normalizedUrl = SUPABASE_URL.trim()
-    .replace(/\/$/, "")
-    .replace(/\/rest\/v1$/, "");
-    
-  return createClient(normalizedUrl, SUPABASE_SERVICE_ROLE_KEY);
+  try {
+    const normalizedUrl = SUPABASE_URL.trim()
+      .replace(/\/$/, "")
+      .replace(/\/rest\/v1$/, "");
+      
+    return createClient(normalizedUrl, SUPABASE_SERVICE_ROLE_KEY);
+  } catch (err: any) {
+    console.error("ERROR REAL EN VERCEL (Initialization):", err);
+    return null;
+  }
 };
 
 const supabase = getSupabaseClient();
 
 if (!supabase) {
-  console.error("ERROR REAL EN VERCEL: Supabase client not initialized. Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  const errorMsg = "Faltan las variables de entorno de Supabase en este entorno (SUPABASE_URL o KEY).";
+  console.error("ERROR REAL EN VERCEL:", errorMsg);
 }
 
 const AUTH_TOKEN = "glow-manager-session-true";
