@@ -227,13 +227,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           <div className="flex items-center gap-3">
             <AlertTriangle size={24} />
             <div>
-              <p className="font-bold text-lg">Error de Disponibilidad</p>
-              <p className="opacity-70 text-sm">{connectionError}</p>
+              <p className="font-bold text-lg">Error del Servidor (Vercel)</p>
+              <p className="font-mono text-xs mt-1 bg-black/40 p-2 rounded border border-rose-500/10 overflow-auto max-h-40">
+                {typeof connectionError === 'string' ? connectionError : JSON.stringify(connectionError, null, 2)}
+              </p>
             </div>
           </div>
           <div className="bg-black/20 p-4 rounded-xl space-y-3 text-xs">
             <p className="opacity-80">
-              Parece que hay un problema al conectar con el servidor. Si acabas de configurar las variables de entorno en Vercel, asegúrate de realizar un <b>Redeploy</b> para que los cambios surtan efecto.
+              <b>Nota técnica:</b> Este error proviene directamente del backend o del cliente de base de datos. Verifica los logs de Vercel para más detalles.
             </p>
           </div>
         </motion.div>

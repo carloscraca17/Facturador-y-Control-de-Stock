@@ -161,9 +161,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (err.name === 'AbortError') {
-        setConnectionError("Tiempo de espera agotado al conectar con el servidor.");
+        setConnectionError("Tiempo de espera agotado al conectar con el servidor (AbortError).");
       } else {
-        setConnectionError("No se pudo conectar con el servidor backend.");
+        setConnectionError(`Error de conexion: ${err.message || JSON.stringify(err)}`);
       }
     } finally {
       setLoading(false);

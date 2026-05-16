@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 // Initialize Supabase Client with better error handling
 const getSupabaseClient = () => {
@@ -27,7 +27,7 @@ const getSupabaseClient = () => {
 const supabase = getSupabaseClient();
 
 if (!supabase) {
-  console.warn("[BACKEND] Supabase client not initialized. Environment variables SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY are missing.");
+  console.error("ERROR REAL EN VERCEL: Supabase client not initialized. Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
 }
 
 const AUTH_TOKEN = "glow-manager-session-true";
@@ -82,6 +82,7 @@ app.get("/api/health", async (req, res) => {
       time: new Date().toISOString() 
     });
   } catch (err: any) {
+    console.error("ERROR REAL EN VERCEL (Health Check):", err);
     res.json({ status: "error", supabase: err.message, time: new Date().toISOString() });
   }
 });
@@ -228,7 +229,7 @@ app.get("/api/products", authenticate, async (req, res) => {
     }
     res.json(data);
   } catch (error: any) {
-    console.error("GET Products Catch Error:", error);
+    console.error("ERROR REAL EN VERCEL (GET Products):", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -363,9 +364,13 @@ app.get("/api/sales", authenticate, async (req, res) => {
       .order("fecha_venta", { ascending: false })
       .limit(100);
 
-    if (error) throw error;
+    if (error) {
+       console.error("ERROR REAL EN VERCEL (GET Sales):", error);
+       throw error;
+    }
     res.json(data);
   } catch (error: any) {
+    console.error("ERROR REAL EN VERCEL (Catch Sales):", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -824,9 +829,13 @@ app.get("/api/movements", authenticate, async (req, res) => {
       .order("fecha", { ascending: false })
       .limit(300);
 
-    if (error) throw error;
+    if (error) {
+       console.error("ERROR REAL EN VERCEL (GET Movements):", error);
+       throw error;
+    }
     res.json(data);
   } catch (error: any) {
+    console.error("ERROR REAL EN VERCEL (Catch Movements):", error);
     res.status(500).json({ error: error.message });
   }
 });
