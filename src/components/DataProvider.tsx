@@ -14,6 +14,7 @@ interface DataContextType {
   setMovements: React.Dispatch<React.SetStateAction<Movement[]>>;
   stats: BusinessStats;
   token: string | null;
+  connectionError: string | null;
   refreshData: () => Promise<void>;
   login: (token: string, user: AppUser) => void;
   logout: () => void;
@@ -27,6 +28,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("glow_token"));
   const [user, setUser] = useState<AppUser | null>(() => {
     const saved = localStorage.getItem("glow_user");
@@ -79,6 +81,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
 
       clearTimeout(timeoutId);
+      setConnectionError(null);
 
       if (prodsRes.ok) {
         setProducts(await prodsRes.json());
@@ -111,6 +114,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.error("Error fetching data:", err);
+      if (err.name === 'AbortError') {
+        setConnectionError("Tiempo de espera agotado al conectar con el servidor.");
+      } else {
+        setConnectionError("No se pudo conectar con el servidor backend.");
+      }
     } finally {
       setLoading(false);
     }
@@ -155,6 +163,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setMovements,
       stats,
       token,
+      connectionError,
       refreshData: fetchData,
       login,
       logout: logoutAction

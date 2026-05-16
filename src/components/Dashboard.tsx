@@ -10,7 +10,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
-  const { stats, products, sales, logout, refreshData, loading } = useData();
+  const { stats, products, sales, logout, refreshData, loading, connectionError } = useData();
   const [isScanning, setIsScanning] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -182,7 +182,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     return acc + (Math.max(0, (s.ingreso_bruto || 0) - (Number(s.pago_parcial) || 0)));
   }, 0);
 
-  const isDisconnected = sales.length === 0 && products.length === 0 && !loading;
+  const isDisconnected = !!connectionError;
+  const isEmptyAndConnected = products.length === 0 && sales.length === 0 && !loading && !connectionError;
 
   const metrics = [
     { 
@@ -221,12 +222,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex items-center gap-3 text-amber-400 text-sm"
+          className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-2xl flex flex-col gap-4 text-rose-400"
         >
-          <AlertTriangle size={18} />
-          <div>
-            <p className="font-bold">Modo Desconectado / Demo</p>
-            <p className="opacity-70 text-xs text-balance">No se pudo conectar con el servidor. Si estás en Vercel, asegúrate de configurar las variables de entorno de Supabase. Mientras tanto, puedes explorar la interfaz con las credenciales admin / admin123.</p>
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={24} />
+            <div>
+              <p className="font-bold text-lg">Error de Conexión en Vercel</p>
+              <p className="opacity-70 text-sm">{connectionError}</p>
+            </div>
+          </div>
+          <div className="bg-black/20 p-4 rounded-xl space-y-3 text-xs">
+            <p className="font-bold uppercase tracking-widest opacity-50">Pasos para resolver:</p>
+            <ol className="list-decimal ml-4 space-y-2 opacity-80">
+              <li>Verifica que en el panel de Vercel (Settings &gt; Environment Variables) hayas agregado: 
+                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_URL</code> y 
+                <code className="bg-white/10 px-1 rounded ml-1">SUPABASE_SERVICE_ROLE_KEY</code>
+              </li>
+              <li><b>IMPORTANTE:</b> Después de agregar las variables, debes ir a la pestaña "Deployments" y hacer un <b>Redeploy</b> (o un nuevo push) para que Vercel las reconozca.</li>
+              <li>Asegúrate de no tener espacios extra al final de las claves.</li>
+            </ol>
+          </div>
+        </motion.div>
+      )}
+
+      {isEmptyAndConnected && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-2xl flex flex-col gap-4 text-emerald-400 text-sm"
+        >
+          <div className="flex items-center gap-3">
+            <Check size={24} />
+            <div>
+              <p className="font-bold">¡Conectado con Supabase con éxito!</p>
+              <p className="opacity-70">Tu base de datos está vacía. Puedes comenzar cargando productos en la sección Inventario o usar el cargador inicial.</p>
+            </div>
           </div>
         </motion.div>
       )}
