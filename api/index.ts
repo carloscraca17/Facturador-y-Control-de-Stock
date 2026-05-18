@@ -1,4 +1,4 @@
-import app from "../server";
+import app from "../server.js";
 
 console.log("[VERCEL] API Function starting up...");
 

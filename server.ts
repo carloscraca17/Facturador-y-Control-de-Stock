@@ -8,7 +8,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { createClient } from "@supabase/supabase-js";
-import { rawProductData } from "./products_data";
+import { rawProductData } from "./products_data.js";
 
 const getSupabaseClient = () => {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
