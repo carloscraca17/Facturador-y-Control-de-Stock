@@ -41,7 +41,7 @@ export const Financials: React.FC = () => {
 
   const [formData, setFormData] = useState({
     tipo_movimiento: "Egreso" as "Ingreso" | "Egreso",
-    categoria: "Varios" as "Venta" | "Varios" | "Fijo" | "Préstamo" | "Ajuste",
+    categoria: "Varios" as "Venta" | "Varios" | "Fijo" | "Préstamo" | "Ajuste" | "Compra_Mercaderia",
     monto: "",
     moneda: "ARS" as "ARS" | "USD",
     descripcion: "",
@@ -403,6 +403,7 @@ export const Financials: React.FC = () => {
 
   const panels = [
     { id: "Venta", label: "Ingresos por Ventas", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    { id: "Compra_Mercaderia", label: "COMPRA DE MERCADERÍA", color: "text-orange-400", bg: "bg-orange-500/10" },
     { id: "Varios", label: "Egresos Varios", color: "text-rose-400", bg: "bg-rose-500/10" },
     { id: "Fijo", label: "Gastos Fijos", color: "text-amber-400", bg: "bg-amber-500/10" },
     { id: "Ajuste", label: "Ajustes", color: "text-indigo-400", bg: "bg-indigo-500/10" },
@@ -662,6 +663,7 @@ export const Financials: React.FC = () => {
                       <td className="px-6 py-5">
                         <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold border ${
                           m.categoria === 'Venta' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                          m.categoria === 'Compra_Mercaderia' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
                           m.categoria === 'Fijo' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
                           m.categoria === 'Préstamo' ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' :
                           'bg-slate-500/10 text-slate-400 border-slate-500/20'
@@ -1011,6 +1013,7 @@ export const Financials: React.FC = () => {
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
                       >
                         <option value="Venta" className="bg-[#1e1e1e]">Ingreso por Venta</option>
+                        <option value="Compra_Mercaderia" className="bg-[#1e1e1e]">COMPRA DE MERCADERÍA</option>
                         <option value="Varios" className="bg-[#1e1e1e]">Egreso Vario</option>
                         <option value="Fijo" className="bg-[#1e1e1e]">Gasto Fijo</option>
                         <option value="Préstamo" className="bg-[#1e1e1e]">Préstamo (Carlos/Yeimar)</option>

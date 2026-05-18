@@ -41,7 +41,7 @@ export interface Sale {
 export interface Movement {
   id: string;
   tipo_movimiento: "Ingreso" | "Egreso";
-  categoria: "Venta" | "Varios" | "Fijo" | "Ajuste" | "Préstamo";
+  categoria: "Venta" | "Varios" | "Fijo" | "Ajuste" | "Préstamo" | "Compra_Mercaderia";
   monto: number;
   moneda: "ARS" | "USD";
   descripcion: string;
