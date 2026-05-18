@@ -29,7 +29,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
   const [extraData, setExtraData] = useState({
     cliente_nombre: "",
     cliente_apellido: "",
-    aumento: "0",
     descuento: "0",
     pagado: true,
     moneda: "ARS" as "ARS" | "USD",
@@ -93,9 +92,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
         return;
     }
 
-    const baseBruto = mode === "scanning" ? (foundProduct?.precio_venta || 0) : (Number(manualData.ingreso_bruto) || foundProduct?.precio_venta || 0);
-    const aumento = Number(extraData.aumento) || 0;
-    const bruto = baseBruto + aumento;
+    const bruto = mode === "scanning" ? (foundProduct?.precio_venta || 0) : (Number(manualData.ingreso_bruto) || foundProduct?.precio_venta || 0);
     const desc = Number(extraData.descuento) || 0;
     const finalBruto = bruto - desc;
     const neto = finalBruto - (foundProduct?.costo_unitario || 0);
@@ -104,8 +101,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
       const payload = {
         canal_venta: extraData.canal_venta || "Local",
         product_id: productId,
-        ingreso_bruto: bruto,
-        aumento: aumento,
+        ingreso_bruto: finalBruto,
         ingreso_neto: neto,
         descuento: desc,
         cliente_nombre: extraData.cliente_nombre,
@@ -327,15 +323,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Aumento (+ $)</label>
-                            <input 
-                                type="number"
-                                value={extraData.aumento}
-                                onChange={(e) => setExtraData({...extraData, aumento: e.target.value})}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm font-bold text-emerald-400"
-                            />
-                        </div>
-                        <div>
                             <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Descuento ($)</label>
                             <input 
                                 type="number"
@@ -343,20 +330,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                                 onChange={(e) => setExtraData({...extraData, descuento: e.target.value})}
                                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm font-bold text-rose-400"
                             />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Moneda</label>
-                            <select 
-                                value={extraData.moneda}
-                                onChange={(e) => setExtraData({...extraData, moneda: e.target.value as any})}
-                                className="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
-                            >
-                                <option value="ARS" className="bg-[#1e1e1e] text-white">ARS ($)</option>
-                                <option value="USD" className="bg-[#1e1e1e] text-white">USD (U$D)</option>
-                            </select>
                         </div>
                         <div>
                             <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">¿Pagado ahora?</label>
@@ -377,16 +350,29 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Pago Inicial/Parcial ($)</label>
-                        <input 
-                            type="number"
-                            value={extraData.pagado ? (((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) + (Number(extraData.aumento) || 0) - (Number(extraData.descuento) || 0))) : extraData.pago_parcial}
-                            disabled={extraData.pagado}
-                            onChange={(e) => setExtraData({...extraData, pago_parcial: e.target.value})}
-                            placeholder="0"
-                            className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm ${extraData.pagado ? 'opacity-50' : ''}`}
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Moneda</label>
+                            <select 
+                                value={extraData.moneda}
+                                onChange={(e) => setExtraData({...extraData, moneda: e.target.value as any})}
+                                className="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
+                            >
+                                <option value="ARS" className="bg-[#1e1e1e] text-white">ARS ($)</option>
+                                <option value="USD" className="bg-[#1e1e1e] text-white">USD (U$D)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Pago Inicial/Parcial ($)</label>
+                            <input 
+                                type="number"
+                                value={extraData.pagado ? (((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) - (Number(extraData.descuento) || 0))) : extraData.pago_parcial}
+                                disabled={extraData.pagado}
+                                onChange={(e) => setExtraData({...extraData, pago_parcial: e.target.value})}
+                                placeholder="0"
+                                className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm ${extraData.pagado ? 'opacity-50' : ''}`}
+                            />
+                        </div>
                     </div>
 
                     <div>
@@ -428,21 +414,21 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                         <div className="min-w-[100px]">
                             <p className="text-[10px] text-pink-400/60 uppercase font-bold tracking-widest mb-1">Monto Final</p>
                             <p className="text-white font-mono font-bold text-xl">
-                                ${((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) + (Number(extraData.aumento) || 0) - (Number(extraData.descuento) || 0)).toLocaleString()}
+                                ${((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) - (Number(extraData.descuento) || 0)).toLocaleString()}
                             </p>
                         </div>
                         {!extraData.pagado && (
                             <div className="min-w-[100px] border-l border-white/10 pl-4">
                                 <p className="text-[10px] text-amber-400/60 uppercase font-bold tracking-widest mb-1">Saldo Pendiente</p>
                                 <p className="text-amber-400 font-mono font-bold text-xl">
-                                    ${(((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) + (Number(extraData.aumento) || 0) - (Number(extraData.descuento) || 0)) - (Number(extraData.pago_parcial) || 0)).toLocaleString()}
+                                    ${(((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) - (Number(extraData.descuento) || 0)) - (Number(extraData.pago_parcial) || 0)).toLocaleString()}
                                 </p>
                             </div>
                         )}
                         <div className="text-right min-w-[100px]">
                             <p className="text-[10px] text-pink-400/60 uppercase font-bold tracking-widest mb-1">Neto Estimado</p>
                             <p className="text-emerald-400 font-mono font-bold">
-                                ${((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) + (Number(extraData.aumento) || 0) - (Number(extraData.descuento) || 0) - foundProduct.costo_unitario).toLocaleString()}
+                                ${((mode === "scanning" ? foundProduct.precio_venta : Number(manualData.ingreso_bruto) || foundProduct.precio_venta) - (Number(extraData.descuento) || 0) - foundProduct.costo_unitario).toLocaleString()}
                             </p>
                         </div>
                     </div>

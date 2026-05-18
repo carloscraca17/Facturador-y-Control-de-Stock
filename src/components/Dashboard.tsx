@@ -281,7 +281,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             product_id: productId || null,
             canal_venta: row["Canal"] || "Local",
             ingreso_bruto: bruto,
-            aumento: parseNumber(row["Aumento"] || 0),
             descuento: desc,
             ingreso_neto: parseNumber(row["Monto Neto"]) || (bruto - desc),
             cliente_nombre: row["Cliente"] || row["Nombre Cliente"] || "Consumidor Final",
@@ -345,7 +344,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           "Cliente": `${s.cliente_nombre || ''} ${s.cliente_apellido || ''}`.trim() || "Consumidor Final",
           "Canal": s.canal_venta,
           "Monto Bruto": s.ingreso_bruto,
-          "Aumento": s.aumento || 0,
           "Descuento": s.descuento,
           "Monto Neto": s.ingreso_neto,
           "Pago Parcial": s.pago_parcial || 0,
@@ -1035,24 +1033,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Aumento (+ $)</label>
-                    <input 
-                      type="number"
-                      value={editingSale.aumento || 0}
-                      onChange={(e) => {
-                        const newAumento = Number(e.target.value);
-                        // If we have product info, we could try to calculate base price, 
-                        // but it's simpler to just let user edit both or assume 
-                        // ingreso_bruto includes the increase.
-                        setEditingSale({...editingSale, aumento: newAumento});
-                      }}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-emerald-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Descuento</label>
                     <input 
