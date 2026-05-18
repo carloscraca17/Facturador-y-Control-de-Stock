@@ -203,6 +203,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
+  const parseNumber = (val: any) => {
+    if (typeof val === "number") return val;
+    if (!val) return 0;
+    let clean = String(val).replace(/[^\d,.+-]/g, '');
+    if (clean.includes(',') && clean.includes('.')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (clean.includes(',')) {
+      clean = clean.replace(',', '.');
+    }
+    const num = Number(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -223,10 +236,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           return;
         }
 
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (const row of data as any[]) {
+        const salesToImport = (data as any[]).map(row => {
           const sku = row["SKU"] || row["sku"] || row["Codigo"];
           const productName = row["Producto"] || row["Nombre Producto"];
           
@@ -240,44 +250,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
             if (prod) productId = prod.id;
           }
 
-          const sale = {
+          const bruto = parseNumber(row["Monto Bruto"] || row["Total"]);
+          const desc = parseNumber(row["Descuento"] || 0);
+
+          const sale: any = {
             fecha_venta: row["Fecha"] || new Date().toISOString(),
             product_id: productId || null,
             canal_venta: row["Canal"] || "Local",
-            ingreso_bruto: Number(row["Monto Bruto"]) || Number(row["Total"]) || 0,
-            descuento: Number(row["Descuento"]) || 0,
-            ingreso_neto: Number(row["Monto Neto"]) || (Number(row["Monto Bruto"]) || 0) - (Number(row["Descuento"]) || 0),
+            ingreso_bruto: bruto,
+            descuento: desc,
+            ingreso_neto: parseNumber(row["Monto Neto"]) || (bruto - desc),
             cliente_nombre: row["Cliente"] || row["Nombre Cliente"] || "Consumidor Final",
             pagado: String(row["Estado Pago"]).toLowerCase().includes("cobrado") || !!row["Pagado"],
-            pago_parcial: Number(row["Pago Parcial"]) || 0,
+            pago_parcial: parseNumber(row["Pago Parcial"] || 0),
             estado_entrega: row["Estado Entrega"] || "Entregado",
             estado_arca: row["Estado ARCA"] || "Pendiente",
-            detalles_venta: row["Detalles"] || ""
+            detalles_venta: row["Detalles"] || "",
+            userId: "admin"
           };
 
-          try {
-            const res = await fetch("/api/sales", {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": localStorage.getItem("glow_token") || ""
-              },
-              body: JSON.stringify(sale)
-            });
-            if (res.ok) successCount++;
-            else errorCount++;
-          } catch (e) {
-            errorCount++;
-          }
-        }
+          if (row["ID"]) sale.id = row["ID"];
+          
+          return sale;
+        });
 
-        setShowImport(false);
-        await fetchSales(1, itemsPerPage);
-        await refreshData();
-        alert(`Importación finalizada. Éxito: ${successCount}, Errores: ${errorCount}`);
-      } catch (err) {
+        const res = await fetch("/api/bulk-import/sales", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": localStorage.getItem("glow_token") || ""
+          },
+          body: JSON.stringify({ items: salesToImport })
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+          setShowImport(false);
+          await fetchSales(1, itemsPerPage);
+          await refreshData();
+          alert(`Importación finalizada con éxito. Se importaron ${result.count} ventas.`);
+        } else {
+          throw new Error(result.error || "Error en el servidor");
+        }
+      } catch (err: any) {
         console.error("Error importing sales:", err);
-        alert("Error al procesar el archivo. Revisa el formato.");
+        alert(`Error al importar ventas: ${err.message}`);
       } finally {
         setImporting(false);
       }
@@ -309,7 +327,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           "Estado Pago": s.pagado ? "Cobrado" : "Pendiente",
           "Estado Entrega": s.estado_entrega || "Pendiente",
           "Estado ARCA": s.estado_arca,
-          "Detalles": s.detalles_venta || ""
+          "Detalles": s.detalles_venta || "",
+          "ID": s.id
         };
       });
 

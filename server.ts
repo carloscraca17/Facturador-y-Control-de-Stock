@@ -511,6 +511,57 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
   }
 });
 
+// Bulk Delete Routes
+app.post("/api/bulk-delete/:table", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { table } = req.params;
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "No IDs provided" });
+    }
+
+    const { error, count } = await supabase
+      .from(table)
+      .delete()
+      .in("id", ids);
+
+    if (error) throw error;
+    res.json({ success: true, count });
+  } catch (err: any) {
+    console.error(`[BULK DELETE ${req.params.table}] Error:`, err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk Import Routes
+app.post("/api/bulk-import/:table", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { table } = req.params;
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "No items provided" });
+    }
+
+    const onConflict = table === "products" ? "sku_barcode" : "id";
+    
+    // We use upside to avoid duplicates if they import multiple times
+    const { data, error } = await supabase
+      .from(table)
+      .upsert(items, { onConflict })
+      .select();
+
+    if (error) throw error;
+    res.json({ success: true, count: data?.length || 0 });
+  } catch (err: any) {
+    console.error(`[BULK IMPORT ${req.params.table}] Error:`, err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete("/api/sales/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });

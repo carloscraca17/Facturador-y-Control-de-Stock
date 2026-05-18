@@ -145,6 +145,29 @@ export const Inventory: React.FC = () => {
     return Number(clean) || 0;
   };
 
+  const parseNumber = (val: any) => {
+    if (typeof val === "number") return val;
+    if (!val) return 0;
+    
+    // Convert to string and clean
+    let clean = String(val).replace(/[^\d,.+-]/g, '');
+    
+    // Handle Spanish formatting
+    // If there's a comma and it's near the end, it's likely decimal
+    // But XLSX usually already gives numbers if possible.
+    // However, if it's a string from CSV or similar:
+    if (clean.includes(',') && clean.includes('.')) {
+      // 1.234,56 -> 1234.56
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (clean.includes(',')) {
+      // 1234,56 -> 1234.56
+      clean = clean.replace(',', '.');
+    }
+    
+    const num = Number(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -165,50 +188,46 @@ export const Inventory: React.FC = () => {
           return;
         }
 
-        let successCount = 0;
-        let errorCount = 0;
+        const productsToImport = (data as any[]).map(row => ({
+          nombre: row["Nombre"] || row["Producto"] || row["Nombre Producto"],
+          sku_barcode: String(row["SKU"] || row["sku"] || row["Codigo"] || ""),
+          categoria: row["Categoría"] || row["Categoria"] || "General",
+          costo_unitario: parseNumber(row["Costo Unitario"] || row["Costo"]),
+          precio_venta: parseNumber(row["Precio Venta"] || row["Precio"]),
+          stock_actual: parseNumber(row["Stock Actual"] || row["Stock"]),
+          stock_minimo: parseNumber(row["Stock Mínimo"] || row["Minimo"] || 5),
+          detalles: row["Detalles"] || row["Detalle"] || "",
+          userId: "admin"
+        })).filter(p => p.nombre && p.sku_barcode);
 
-        for (const row of data as any[]) {
-          const product = {
-            nombre: row["Nombre"] || row["Producto"] || row["Nombre Producto"],
-            sku_barcode: String(row["SKU"] || row["sku"] || row["Codigo"] || ""),
-            categoria: row["Categoría"] || row["Categoria"] || "General",
-            costo_unitario: Number(row["Costo Unitario"]) || Number(row["Costo"]) || 0,
-            precio_venta: Number(row["Precio Venta"]) || Number(row["Precio"]) || 0,
-            stock_actual: Number(row["Stock Actual"]) || Number(row["Stock"]) || 0,
-            stock_minimo: Number(row["Stock Mínimo"]) || Number(row["Minimo"]) || 5,
-            detalles: row["Detalles"] || row["Detalle"] || ""
-          };
-
-          if (!product.nombre || !product.sku_barcode) continue;
-
-          try {
-            const res = await fetch("/api/products", {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": token || localStorage.getItem("glow_token") || ""
-              },
-              body: JSON.stringify(product)
-            });
-            
-            if (res.ok) {
-              successCount++;
-            } else {
-              errorCount++;
-            }
-          } catch (err) {
-            errorCount++;
-          }
+        if (productsToImport.length === 0) {
+          alert("No se encontraron productos válidos en el archivo. Asegúrate de que las columnas tengan los nombres correctos.");
+          setIsSaving(false);
+          return;
         }
 
-        setShowImport(false);
-        await fetchProducts(1, itemsPerPage);
-        await refreshData();
-        alert(`Importación finalizada. Éxito: ${successCount}, Errores: ${errorCount}`);
-      } catch (err) {
+        const res = await fetch("/api/bulk-import/products", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": token || localStorage.getItem("glow_token") || ""
+          },
+          body: JSON.stringify({ items: productsToImport })
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+          setShowImport(false);
+          await fetchProducts(1, itemsPerPage);
+          await refreshData();
+          alert(`Importación finalizada con éxito. Se importaron/actualizaron ${result.count} productos.`);
+        } else {
+          throw new Error(result.error || "Error en el servidor");
+        }
+      } catch (err: any) {
         console.error("Error importing products:", err);
-        alert("Error al procesar el archivo Excel.");
+        alert(`Error al importar productos: ${err.message}`);
       } finally {
         setIsSaving(false);
       }
