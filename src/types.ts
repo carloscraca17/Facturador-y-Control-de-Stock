@@ -32,6 +32,10 @@ export interface Sale {
   detalles_venta?: string;
   pago_parcial?: number;
   estado_entrega?: "Pendiente" | "Entregado";
+  product_info?: {
+    nombre: string;
+    sku_barcode: string;
+  };
 }
 
 export interface Movement {

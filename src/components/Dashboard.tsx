@@ -43,6 +43,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<"all" | "paid" | "unpaid" | "partial">("all");
   const [canalFilter, setCanalFilter] = useState<string>("all");
   const [arcaFilter, setArcaFilter] = useState<string>("all");
+  const [entregaFilter, setEntregaFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   const formatDate = (date: any) => {
@@ -155,10 +156,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
       const matchesCanal = canalFilter === "all" || sale.canal_venta === canalFilter;
       const matchesArca = arcaFilter === "all" || sale.estado_arca === arcaFilter;
+      const matchesEntrega = entregaFilter === "all" || sale.estado_entrega === entregaFilter;
 
-      const product = products.find(p => p.id === sale.product_id);
+      const productName = sale.product_info?.nombre || products.find(p => p.id === sale.product_id)?.nombre || "";
       const searchStr = `
-        ${product?.nombre || ""} 
+        ${productName} 
         ${sale.cliente_nombre || ""} 
         ${sale.cliente_apellido || ""} 
         ${sale.detalles_venta || ""} 
@@ -167,7 +169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       `.toLowerCase();
       const matchesSearch = searchTerm.trim() === "" || searchStr.includes(searchTerm.toLowerCase());
 
-      return matchesPayment && matchesCanal && matchesArca && matchesSearch;
+      return matchesPayment && matchesCanal && matchesArca && matchesEntrega && matchesSearch;
     })
     .sort((a, b) => {
       let valA: any = a[sortBy as keyof Sale];
@@ -345,7 +347,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       accent: "bg-emerald-500/20"
     },
     { 
-      label: "Ganancia Real", 
+      label: "GANANCIA TOTAL", 
       value: `$${stats.realProfit.toLocaleString()}`, 
       icon: DollarSign, 
       color: "text-pink-400",
@@ -584,7 +586,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                 </div>
               </div>
               <div className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3 w-full">
                   <div>
                     <label className="block text-[8px] uppercase tracking-widest text-white/30 font-bold mb-1.5 ml-1">Desde</label>
                     <input 
@@ -629,6 +631,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                       <option value="Error">Error</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-[8px] uppercase tracking-widest text-white/30 font-bold mb-1.5 ml-1">Entrega</label>
+                    <select 
+                      value={entregaFilter}
+                      onChange={(e) => setEntregaFilter(e.target.value)}
+                      className="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-3 py-2 text-[11px] text-white focus:border-pink-500 outline-none appearance-none"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="Entregado">Entregado</option>
+                      <option value="Pendiente">Pendiente</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-4 flex-wrap">
@@ -659,7 +673,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                       </button>
                    </div>
 
-                   {(searchTerm || dateFrom || dateTo || sortBy !== 'fecha_venta' || sortOrder !== 'desc' || paymentStatusFilter !== 'all' || canalFilter !== 'all' || arcaFilter !== 'all') && (
+                   {(searchTerm || dateFrom || dateTo || sortBy !== 'fecha_venta' || sortOrder !== 'desc' || paymentStatusFilter !== 'all' || canalFilter !== 'all' || arcaFilter !== 'all' || entregaFilter !== 'all') && (
                      <button 
                         onClick={() => { 
                           setSearchTerm("");
@@ -670,6 +684,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                           setPaymentStatusFilter("all");
                           setCanalFilter("all");
                           setArcaFilter("all");
+                          setEntregaFilter("all");
                         }}
                         className="px-3 py-2 rounded-xl text-[9px] font-bold uppercase tracking-widest text-pink-400/60 hover:text-pink-400 transition-colors"
                      >
@@ -749,13 +764,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                         <td colSpan={7} className="px-6 py-10 text-center text-white/30 italic">No hay ventas que coincidan con los filtros</td>
                     </tr>
                 ) : filteredAndSortedSales.map((sale) => {
-                  const product = products.find(p => p.id === sale.product_id);
+                  const productName = sale.product_info?.nombre || products.find(p => p.id === sale.product_id)?.nombre || "";
                   return (
                     <tr key={sale.id} className="hover:bg-white/5 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-0.5">
                           <div className="font-semibold text-white leading-tight">
-                            {product?.nombre || `Venta #${sale.id.slice(-4).toUpperCase()}`}
+                            {productName || `Venta #${sale.id.slice(-4).toUpperCase()}`}
                           </div>
                           {sale.detalles_venta && (
                             <div className="text-[10px] text-pink-400 font-medium italic opacity-100 bg-pink-500/5 px-1.5 py-0.5 rounded inline-block w-fit">

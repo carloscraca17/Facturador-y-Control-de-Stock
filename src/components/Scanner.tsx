@@ -9,12 +9,14 @@ interface ScannerProps {
 }
 
 export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
-  const { refreshData, products } = useData();
+  const { refreshData, products: globalProducts, token } = useData();
   const [data, setData] = useState<string>("Buscando...");
   const [scanning, setScanning] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [productSearch, setProductSearch] = useState("");
+  const [localProducts, setLocalProducts] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [mode, setMode] = useState<"scanning" | "manual">("scanning");
   const [manualData, setManualData] = useState({
@@ -35,15 +37,41 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     estado_entrega: "Pendiente" as "Pendiente" | "Entregado",
     canal_venta: "Local" as "Local" | "MercadoLibre" | "Web"
   });
+  
+  const searchProducts = async (term: string) => {
+    if (!token) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/products?page=1&limit=20&search=${encodeURIComponent(term)}`, {
+        headers: { "Authorization": token }
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setLocalProducts(result.data);
+      }
+    } catch (err) {
+      console.error("Error searching products in scanner:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
-  const filteredProducts = products.filter(p => 
-    p.nombre.toLowerCase().includes(productSearch.toLowerCase()) || 
-    p.sku_barcode.toLowerCase().includes(productSearch.toLowerCase())
-  ).slice(0, 10);
+  React.useEffect(() => {
+    if (mode === "manual" && productSearch.length >= 2) {
+      const delayDebounceFn = setTimeout(() => {
+        searchProducts(productSearch);
+      }, 500);
+      return () => clearTimeout(delayDebounceFn);
+    } else if (mode === "manual" && productSearch.length === 0) {
+      setLocalProducts(globalProducts.slice(0, 20));
+    }
+  }, [productSearch, mode, globalProducts]);
+
+  const filteredProducts = productSearch.length >= 2 ? localProducts : globalProducts.slice(0, 50);
 
   const foundProduct = mode === "scanning" 
-    ? products.find(p => p.sku_barcode === data)
-    : products.find(p => p.id === manualData.product_id);
+    ? globalProducts.find(p => p.sku_barcode === data)
+    : globalProducts.find(p => p.id === manualData.product_id) || localProducts.find(p => p.id === manualData.product_id);
 
   const handleRegister = async () => {
     if (mode === "scanning" && !foundProduct) {
@@ -117,21 +145,21 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     if (result) {
       setData(result.text);
       setScanning(false);
-      const exists = products.some(p => p.sku_barcode === result.text);
+      const exists = globalProducts.some(p => p.sku_barcode === result.text);
       setNotFound(!exists);
     }
   };
 
   const simulateScan = () => {
     // Pick a random product from inventory if exists, otherwise a fake one
-    if (products.length > 0) {
-        const randomProd = products[Math.floor(Math.random() * products.length)];
+    if (globalProducts.length > 0) {
+        const randomProd = globalProducts[Math.floor(Math.random() * globalProducts.length)];
         setData(randomProd.sku_barcode);
     } else {
         setData("7791234567890"); 
     }
     setScanning(false);
-    setNotFound(products.length === 0);
+    setNotFound(globalProducts.length === 0);
   };
 
   return (
@@ -234,13 +262,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                         <select 
                             value={manualData.product_id}
                             onChange={(e) => {
-                                const prod = products.find(p => p.id === e.target.value);
+                                const prod = (productSearch.length >= 2 ? localProducts : globalProducts).find(p => p.id === e.target.value);
                                 setManualData({...manualData, product_id: e.target.value, ingreso_bruto: prod?.precio_venta.toString() || ""});
                             }}
                             className="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
                         >
                             <option value="" className="bg-[#1e1e1e] text-white">{productSearch ? `Resultados (${filteredProducts.length})` : 'Seleccionar Producto...'}</option>
-                            {(productSearch ? filteredProducts : products.slice(0, 50)).map(p => (
+                            {(productSearch ? filteredProducts : globalProducts.slice(0, 50)).map(p => (
                                 <option key={p.id} value={p.id} className="bg-[#1e1e1e] text-white">{p.nombre} ({p.sku_barcode})</option>
                             ))}
                         </select>

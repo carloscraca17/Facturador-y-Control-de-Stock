@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Search, 
@@ -21,6 +21,7 @@ export const Inventory: React.FC = () => {
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [sortField, setSortField] = useState<"nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual" | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -39,9 +40,19 @@ export const Inventory: React.FC = () => {
     precio_venta: 0,
     stock_actual: 0,
     stock_minimo: 5,
-    categoria: "General",
+    categoria: "SKINCARE Y PERFUMERÍA",
     detalles: ""
   });
+
+  // UseEffect for debounced search
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      setPage(1);
+      fetchProducts(1, itemsPerPage, searchTerm);
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
 
   const handleSort = (field: "nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual") => {
     if (sortField === field) {
@@ -57,12 +68,9 @@ export const Inventory: React.FC = () => {
     return sortOrder === "asc" ? <ArrowUpDown size={12} className="text-pink-400" /> : <ArrowUpDown size={12} className="text-pink-400 rotate-180" />;
   };
 
+  // Note: Filtering is handled server-side now for Term, but local for category
   const filteredProducts = products
-    .filter(p => 
-      (p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       p.sku_barcode.toLowerCase().includes(searchTerm.toLowerCase())) &&
-      (!activeCategory || p.categoria === activeCategory)
-    )
+    .filter(p => !activeCategory || p.categoria === activeCategory)
     .sort((a, b) => {
         if (!sortField) return 0;
         const aVal = a[sortField];
@@ -77,7 +85,15 @@ export const Inventory: React.FC = () => {
             : (bVal as number) - (aVal as number);
     });
 
-  const categories = Array.from(new Set(products.map(p => p.categoria || "General")));
+  const categories = Array.from(new Set([
+    "SKINCARE Y PERFUMERÍA",
+    "MAQUILLAJE Y COSMÉTICA",
+    "ELECTRÓNICOS",
+    "INDUMENTARIA",
+    "CALZADO",
+    "ACCESORIOS",
+    ...products.map(p => p.categoria || "General")
+  ]));
 
   const startEdit = (product: any) => {
     setFormData({
@@ -102,7 +118,7 @@ export const Inventory: React.FC = () => {
       precio_venta: 0,
       stock_actual: 0,
       stock_minimo: 5,
-      categoria: "General",
+      categoria: "SKINCARE Y PERFUMERÍA",
       detalles: ""
     });
     setEditingId(null);
@@ -346,7 +362,8 @@ export const Inventory: React.FC = () => {
       });
 
       if (response.ok) {
-        await fetchProducts(page, itemsPerPage);
+        setPage(1); // Reset to page 1 to see the new product (sorted by newest)
+        await fetchProducts(1, itemsPerPage, searchTerm);
         resetForm();
       } else {
         const errData = await response.json();
@@ -365,7 +382,7 @@ export const Inventory: React.FC = () => {
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setPage(newPage);
-      fetchProducts(newPage, itemsPerPage);
+      fetchProducts(newPage, itemsPerPage, searchTerm);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -757,11 +774,12 @@ export const Inventory: React.FC = () => {
                         onChange={(e) => setFormData({...formData, categoria: e.target.value})}
                         className="w-full bg-[#1e1e1e] border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"
                     >
-                        <option value="Manicuría" className="bg-[#1e1e1e] text-white">Manicuría</option>
-                        <option value="Pedicuría" className="bg-[#1e1e1e] text-white">Pedicuría</option>
-                        <option value="Pestañas" className="bg-[#1e1e1e] text-white">Pestañas</option>
-                        <option value="Descartables" className="bg-[#1e1e1e] text-white">Descartables</option>
-                        <option value="General" className="bg-[#1e1e1e] text-white">General</option>
+                        <option value="SKINCARE Y PERFUMERÍA" className="bg-[#1e1e1e] text-white">SKINCARE Y PERFUMERÍA</option>
+                        <option value="MAQUILLAJE Y COSMÉTICA" className="bg-[#1e1e1e] text-white">MAQUILLAJE Y COSMÉTICA</option>
+                        <option value="ELECTRÓNICOS" className="bg-[#1e1e1e] text-white">ELECTRÓNICOS</option>
+                        <option value="INDUMENTARIA" className="bg-[#1e1e1e] text-white">INDUMENTARIA</option>
+                        <option value="CALZADO" className="bg-[#1e1e1e] text-white">CALZADO</option>
+                        <option value="ACCESORIOS" className="bg-[#1e1e1e] text-white">ACCESORIOS</option>
                     </select>
                 </div>
                 <div className="space-y-2">

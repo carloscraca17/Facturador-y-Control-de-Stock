@@ -222,13 +222,20 @@ app.get("/api/products", authenticate, async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 1000;
+    const search = req.query.search as string;
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const { data, error, count } = await supabase
+    let query = supabase
       .from("products")
-      .select("*", { count: "exact" })
-      .order("nombre", { ascending: true })
+      .select("*", { count: "exact" });
+
+    if (search) {
+      query = query.or(`nombre.ilike.%${search}%,sku_barcode.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query
+      .order("created_at", { ascending: false })
       .range(from, to);
     
     if (error) throw error;
@@ -281,6 +288,38 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    // Implementation of user request: update sales when product price or cost changes
+    if (req.body.precio_venta !== undefined || req.body.costo_unitario !== undefined) {
+      const newPrice = Number(data.precio_venta);
+      const newCost = Number(data.costo_unitario);
+
+      const { data: salesToUpdate } = await supabase
+        .from("sales")
+        .select("id, descuento")
+        .eq("product_id", req.params.id);
+
+      if (salesToUpdate && salesToUpdate.length > 0) {
+        // Update all related sales to reflect the new financial reality
+        const updates = salesToUpdate.map(sale => ({
+          id: sale.id,
+          ingreso_bruto: newPrice,
+          ingreso_neto: (newPrice - (Number(sale.descuento) || 0)) - newCost
+        }));
+
+        // Perform updates in batches or individually if upsert is not preferred
+        for (const update of updates) {
+          await supabase
+            .from("sales")
+            .update({
+              ingreso_bruto: update.ingreso_bruto,
+              ingreso_neto: update.ingreso_neto
+            })
+            .eq("id", update.id);
+        }
+      }
+    }
+
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -312,7 +351,7 @@ app.get("/api/sales", authenticate, async (req, res) => {
 
     const { data, error, count } = await supabase
       .from("sales")
-      .select("*", { count: "exact" })
+      .select("*, product_info:products(nombre, sku_barcode)", { count: "exact" })
       .order("fecha_venta", { ascending: false })
       .range(from, to);
 
@@ -328,11 +367,21 @@ app.post("/api/sales", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     const s = req.body;
+    // Fetch product unit cost to ensure accurate ingreso_neto
+    let productCost = 0;
+    if (s.product_id) {
+      const { data: prod } = await supabase.from("products").select("costo_unitario").eq("id", s.product_id).single();
+      if (prod) productCost = Number(prod.costo_unitario) || 0;
+    }
+
+    const bruto = Number(s.ingreso_bruto) || 0;
+    const desc = Number(s.descuento) || 0;
+
     const sale = {
       ...s,
-      ingreso_bruto: Number(s.ingreso_bruto) || 0,
-      ingreso_neto: Number(s.ingreso_neto) || 0,
-      descuento: Number(s.descuento) || 0,
+      ingreso_bruto: bruto,
+      ingreso_neto: (bruto - desc) - productCost,
+      descuento: desc,
       pago_parcial: Number(s.pago_parcial) || 0,
       fecha_venta: s.fecha_venta || new Date()
     };
@@ -397,11 +446,24 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       return res.status(404).json({ error: "Venta no encontrada" });
     }
 
-    const s = req.body;
+    const { product_info, ...s } = req.body;
+    
+    // Fetch product unit cost for net income recalculation
+    const pid = s.product_id || oldSale.product_id;
+    let productCost = 0;
+    if (pid) {
+      const { data: prod } = await supabase.from("products").select("costo_unitario").eq("id", pid).single();
+      if (prod) productCost = Number(prod.costo_unitario) || 0;
+    }
+
+    const bruto = Number(s.ingreso_bruto) !== undefined ? Number(s.ingreso_bruto) : oldSale.ingreso_bruto;
+    const desc = Number(s.descuento) !== undefined ? Number(s.descuento) : oldSale.descuento;
+
     const updateData = {
       ...s,
-      ingreso_bruto: Number(s.ingreso_bruto) || oldSale.ingreso_bruto,
-      ingreso_neto: Number(s.ingreso_neto) || oldSale.ingreso_neto,
+      ingreso_bruto: bruto,
+      ingreso_neto: (bruto - desc) - productCost,
+      descuento: desc,
       pago_parcial: Number(s.pago_parcial) !== undefined ? Number(s.pago_parcial) : oldSale.pago_parcial,
     };
 
@@ -452,8 +514,30 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
 app.delete("/api/sales/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { error } = await supabase.from("sales").delete().eq("id", req.params.id);
-    if (error) throw error;
+    
+    // Fetch sale first to find the product_id and restore stock
+    const { data: sale, error: fetchError } = await supabase
+      .from("sales")
+      .select("product_id")
+      .eq("id", req.params.id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (sale && sale.product_id) {
+        // Increment stock
+        const { data: prod } = await supabase.from("products").select("stock_actual").eq("id", sale.product_id).single();
+        if (prod) {
+            await supabase
+                .from("products")
+                .update({ stock_actual: Number(prod.stock_actual) + 1 })
+                .eq("id", sale.product_id);
+        }
+    }
+
+    const { error: deleteError } = await supabase.from("sales").delete().eq("id", req.params.id);
+    if (deleteError) throw deleteError;
+    
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -524,7 +608,7 @@ app.get("/api/stats", authenticate, async (req, res) => {
       .filter(m => m.tipo_movimiento === "Ingreso" && m.moneda === "ARS")
       .reduce((acc, m) => acc + (Number(m.monto) || 0), 0);
 
-    const realProfit = totalIncome - totalExpenses;
+    const realProfit = sales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);
 
     const unpaidTotal = sales.reduce((acc, s) => s.pagado ? acc : acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0))), 0);
 

@@ -16,7 +16,7 @@ interface DataContextType {
   token: string | null;
   connectionError: string | null;
   refreshData: () => Promise<void>;
-  fetchProducts: (page?: number, limit?: number) => Promise<void>;
+  fetchProducts: (page?: number, limit?: number, search?: string) => Promise<void>;
   fetchSales: (page?: number, limit?: number) => Promise<void>;
   productsTotal: number;
   salesTotal: number;
@@ -75,10 +75,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const fetchProducts = async (page = 1, limit = 50) => {
+  const fetchProducts = async (page = 1, limit = 50, search = "") => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/products?page=${page}&limit=${limit}`, { 
+      const url = `/api/products?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ""}`;
+      const res = await fetch(url, { 
         headers: { "Authorization": token } 
       });
       if (res.ok) {
