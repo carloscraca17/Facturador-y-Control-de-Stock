@@ -17,6 +17,7 @@ export interface Sale {
   canal_venta: "Local" | "MercadoLibre" | "Web";
   product_id?: string;
   ingreso_bruto: number;
+  aumento?: number;
   comision_plataforma: number;
   costo_envio: number;
   ingreso_neto: number;
