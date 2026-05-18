@@ -28,7 +28,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
-  const { stats, products, sales, salesTotal, fetchSales, logout, refreshData, loading, connectionError } = useData();
+  const { stats, products, sales, salesTotal, fetchSales, logout, refreshData, loading, connectionError, user } = useData();
   const [page, setPage] = useState(1);
   const itemsPerPage = 20;
   const [isScanning, setIsScanning] = useState(false);
@@ -216,6 +216,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     return isNaN(num) ? 0 : num;
   };
 
+  const parseDate = (val: any) => {
+    if (!val) return new Date().toISOString();
+    if (val instanceof Date) return val.toISOString();
+    
+    let dateStr = String(val).trim();
+    
+    // Check for DD/MM/YYYY pattern common in Spanish Excel
+    const dmy = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)$/);
+    if (dmy) {
+        const [_, d, m, y, rest] = dmy;
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}${rest || 'T12:00:00Z'}`;
+    }
+    
+    // Check for Excel serial number
+    if (!isNaN(Number(dateStr)) && Number(dateStr) > 40000) {
+        const date = new Date((Number(dateStr) - 25569) * 86400 * 1000);
+        return date.toISOString();
+    }
+    
+    const parsed = new Date(dateStr);
+    return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -225,7 +248,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
@@ -254,19 +277,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           const desc = parseNumber(row["Descuento"] || 0);
 
           const sale: any = {
-            fecha_venta: row["Fecha"] || new Date().toISOString(),
+            fecha_venta: parseDate(row["Fecha"]),
             product_id: productId || null,
             canal_venta: row["Canal"] || "Local",
             ingreso_bruto: bruto,
             descuento: desc,
             ingreso_neto: parseNumber(row["Monto Neto"]) || (bruto - desc),
             cliente_nombre: row["Cliente"] || row["Nombre Cliente"] || "Consumidor Final",
-            pagado: String(row["Estado Pago"]).toLowerCase().includes("cobrado") || !!row["Pagado"],
+            pagado: String(row["Estado Pago"] || "").toLowerCase().includes("cobrado") || !!row["Pagado"],
             pago_parcial: parseNumber(row["Pago Parcial"] || 0),
             estado_entrega: row["Estado Entrega"] || "Entregado",
             estado_arca: row["Estado ARCA"] || "Pendiente",
             detalles_venta: row["Detalles"] || "",
-            userId: "admin"
+            userId: user?.id || "admin"
           };
 
           if (row["ID"]) sale.id = row["ID"];

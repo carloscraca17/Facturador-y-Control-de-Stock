@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 
 export const Inventory: React.FC = () => {
-  const { products, setProducts, productsTotal, fetchProducts, refreshData, token } = useData();
+  const { products, setProducts, productsTotal, fetchProducts, refreshData, token, user } = useData();
   const [page, setPage] = useState(1);
   const itemsPerPage = 50;
   const [searchTerm, setSearchTerm] = useState("");
@@ -177,7 +177,7 @@ export const Inventory: React.FC = () => {
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
@@ -197,7 +197,7 @@ export const Inventory: React.FC = () => {
           stock_actual: parseNumber(row["Stock Actual"] || row["Stock"]),
           stock_minimo: parseNumber(row["Stock Mínimo"] || row["Minimo"] || 5),
           detalles: row["Detalles"] || row["Detalle"] || "",
-          userId: "admin"
+          userId: user?.id || "admin"
         })).filter(p => p.nombre && p.sku_barcode);
 
         if (productsToImport.length === 0) {
