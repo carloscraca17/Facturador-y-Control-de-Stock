@@ -43,6 +43,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<"all" | "paid" | "unpaid" | "partial">("all");
   const [canalFilter, setCanalFilter] = useState<string>("all");
   const [arcaFilter, setArcaFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const formatDate = (date: any) => {
     if (!date) return "N/A";
@@ -134,8 +135,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const MONTHLY_GOAL = 1000000;
-  // Use stats from backend instead of local calculation for better accuracy with pagination
-  const monthlyGrossTotal = stats.totalRevenue;
+  // Use totalGrossSales (includes paid and unpaid) for the goal calculation as requested
+  const monthlyGrossTotal = stats.totalGrossSales;
   const goalProgress = Math.min((monthlyGrossTotal / MONTHLY_GOAL) * 100, 100);
 
   // Sorting and Filtering Logic
@@ -155,7 +156,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       const matchesCanal = canalFilter === "all" || sale.canal_venta === canalFilter;
       const matchesArca = arcaFilter === "all" || sale.estado_arca === arcaFilter;
 
-      return matchesPayment && matchesCanal && matchesArca;
+      const product = products.find(p => p.id === sale.product_id);
+      const searchStr = `
+        ${product?.nombre || ""} 
+        ${sale.cliente_nombre || ""} 
+        ${sale.cliente_apellido || ""} 
+        ${sale.detalles_venta || ""} 
+        ${sale.canal_venta || ""} 
+        ${sale.id}
+      `.toLowerCase();
+      const matchesSearch = searchTerm.trim() === "" || searchStr.includes(searchTerm.toLowerCase());
+
+      return matchesPayment && matchesCanal && matchesArca && matchesSearch;
     })
     .sort((a, b) => {
       let valA: any = a[sortBy as keyof Sale];
@@ -319,8 +331,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const metrics = [
     { 
-      label: "Ingresos Netos", 
-      value: `$${stats.totalRevenue.toLocaleString()}`, 
+      label: "Venta Total", 
+      value: `$${stats.totalGrossSales.toLocaleString()}`, 
+      icon: ShoppingBag, 
+      color: "text-blue-400",
+      accent: "bg-blue-500/20"
+    },
+    { 
+      label: "Total Cobrado", 
+      value: `$${stats.totalCollected.toLocaleString()}`, 
       icon: TrendingUp, 
       color: "text-emerald-400",
       accent: "bg-emerald-500/20"
@@ -340,12 +359,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       accent: "bg-amber-500/20"
     },
     { 
-      label: "Estado ARCA", 
-      value: `${stats.arcaPending} Pendientes`, 
+      label: "ARCA Pendiente", 
+      value: stats.arcaPending.toString(), 
       icon: FileText, 
-      color: "text-blue-400",
-      accent: "bg-blue-500/20"
+      color: "text-indigo-400", 
+      accent: "bg-indigo-500/20"
     },
+    { 
+      label: "Local", 
+      value: `$${(stats.salesByChannel?.Local || 0).toLocaleString()}`, 
+      icon: ShoppingBag, 
+      color: "text-pink-400", 
+      accent: "bg-pink-500/20"
+    },
+    { 
+      label: "Web", 
+      value: `$${(stats.salesByChannel?.Web || 0).toLocaleString()}`, 
+      icon: ShoppingBag, 
+      color: "text-purple-400", 
+      accent: "bg-purple-500/20"
+    },
+    { 
+      label: "MercadoLibre", 
+      value: `$${(stats.salesByChannel?.MercadoLibre || 0).toLocaleString()}`, 
+      icon: ShoppingBag, 
+      color: "text-yellow-400", 
+      accent: "bg-yellow-500/20"
+    }
   ];
 
   return (
@@ -523,6 +563,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
             {/* Filtros */}
             <div className="space-y-4">
+              <div className="mb-4">
+                <div className="relative">
+                  <input 
+                    type="text"
+                    placeholder="Buscar por producto, cliente, detalle, SKU..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-12 py-4 text-sm text-white focus:border-pink-500 outline-none transition-all placeholder:text-white/20"
+                  />
+                  <ShoppingBag size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
+                  {searchTerm && (
+                    <button 
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="flex flex-col md:flex-row gap-4 items-end">
                 <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
                   <div>
@@ -599,9 +659,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                       </button>
                    </div>
 
-                   {(dateFrom || dateTo || sortBy !== 'fecha_venta' || sortOrder !== 'desc' || paymentStatusFilter !== 'all' || canalFilter !== 'all' || arcaFilter !== 'all') && (
+                   {(searchTerm || dateFrom || dateTo || sortBy !== 'fecha_venta' || sortOrder !== 'desc' || paymentStatusFilter !== 'all' || canalFilter !== 'all' || arcaFilter !== 'all') && (
                      <button 
                         onClick={() => { 
+                          setSearchTerm("");
                           setDateFrom(""); 
                           setDateTo(""); 
                           setSortBy("fecha_venta"); 

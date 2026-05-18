@@ -340,17 +340,39 @@ app.post("/api/sales", authenticate, async (req, res) => {
     const { data, error } = await supabase.from("sales").insert([sale]).select().single();
     if (error) throw error;
 
+    // Decrement stock
+    if (data.product_id) {
+      const { data: prod } = await supabase.from("products").select("stock_actual").eq("id", data.product_id).single();
+      if (prod) {
+        await supabase.from("products")
+          .update({ stock_actual: Math.max(0, (Number(prod.stock_actual) || 0) - 1) })
+          .eq("id", data.product_id);
+      }
+    }
+
+    // Fetch product name for better description
+    let productName = "Venta";
+    if (data.product_id) {
+      const { data: prod } = await supabase.from("products").select("nombre").eq("id", data.product_id).single();
+      if (prod) productName = prod.nombre;
+    }
+
+    const clienteDesc = `${data.cliente_nombre || ""} ${data.cliente_apellido || ""}`.trim() || "Consumidor Final";
+    const detalleDesc = data.detalles_venta ? ` (${data.detalles_venta})` : "";
+
     // Movement fallback
-    const amount = Number(data.pago_parcial) || (data.pagado ? Number(data.ingreso_bruto) : 0);
+    const amount = data.pagado ? Number(data.ingreso_bruto) : (Number(data.pago_parcial) || 0);
     if (amount > 0) {
-      await supabase.from("movements").insert([{
+      const { error: moveError } = await supabase.from("movements").insert([{
         tipo_movimiento: "Ingreso",
         categoria: "Venta",
         monto: amount,
-        descripcion: `Venta #${data.id.slice(-4).toUpperCase()}`,
+        moneda: data.moneda || "ARS",
+        descripcion: `Ingreso de Venta - ${clienteDesc} - ${productName}${detalleDesc}`,
         sale_id: data.id,
         fecha: new Date()
-      }]).catch(() => {});
+      }]);
+      if (moveError) console.error("[MOVE_POST] Error:", moveError);
     }
 
     res.json(data);
@@ -363,15 +385,66 @@ app.post("/api/sales", authenticate, async (req, res) => {
 app.put("/api/sales/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase
+    
+    // 1. Get original sale to compare payment state
+    const { data: oldSale, error: fetchError } = await supabase
       .from("sales")
-      .update(req.body)
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
+    
+    if (fetchError || !oldSale) {
+      return res.status(404).json({ error: "Venta no encontrada" });
+    }
+
+    const s = req.body;
+    const updateData = {
+      ...s,
+      ingreso_bruto: Number(s.ingreso_bruto) || oldSale.ingreso_bruto,
+      ingreso_neto: Number(s.ingreso_neto) || oldSale.ingreso_neto,
+      pago_parcial: Number(s.pago_parcial) !== undefined ? Number(s.pago_parcial) : oldSale.pago_parcial,
+    };
+
+    // 2. Perform the update
+    const { data: updatedSale, error: updateError } = await supabase
+      .from("sales")
+      .update(updateData)
       .eq("id", req.params.id)
       .select()
       .single();
-    if (error) throw error;
-    res.json(data);
+
+    if (updateError) throw updateError;
+
+    // 3. Sync with movements
+    const oldPaid = oldSale.pagado ? Number(oldSale.ingreso_bruto) : (Number(oldSale.pago_parcial) || 0);
+    const newPaid = updatedSale.pagado ? Number(updatedSale.ingreso_bruto) : (Number(updatedSale.pago_parcial) || 0);
+    const diff = newPaid - oldPaid;
+
+    if (Math.abs(diff) > 0.01) {
+      // Fetch product name for description
+      let productName = "Venta";
+      if (updatedSale.product_id) {
+        const { data: prod } = await supabase.from("products").select("nombre").eq("id", updatedSale.product_id).single();
+        if (prod) productName = prod.nombre;
+      }
+      const clienteDesc = `${updatedSale.cliente_nombre || ""} ${updatedSale.cliente_apellido || ""}`.trim() || "Consumidor Final";
+      const detalleDesc = updatedSale.detalles_venta ? ` (${updatedSale.detalles_venta})` : "";
+
+      const { error: syncError } = await supabase.from("movements").insert([{
+        tipo_movimiento: diff > 0 ? "Ingreso" : "Egreso",
+        categoria: "Venta",
+        monto: Math.abs(diff),
+        moneda: updatedSale.moneda || "ARS",
+        descripcion: `${diff > 0 ? "Cobro" : "Reverso"} de Venta - ${clienteDesc} - ${productName}${detalleDesc}`,
+        sale_id: updatedSale.id,
+        fecha: new Date()
+      }]);
+      if (syncError) console.error("[MOVE_SYNC] Error:", syncError);
+    }
+
+    res.json(updatedSale);
   } catch (error: any) {
+    console.error("[SALES] PUT Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -418,24 +491,51 @@ app.post("/api/expenses", authenticate, async (req, res) => {
 app.get("/api/stats", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const [salesRes, productsRes, expensesRes] = await Promise.all([
-      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca"),
+    const [salesRes, productsRes, expensesRes, movementsRes] = await Promise.all([
+      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca, canal_venta"),
       supabase.from("products").select("stock_actual, stock_minimo"),
-      supabase.from("expenses").select("monto")
+      supabase.from("expenses").select("monto"),
+      supabase.from("movements").select("monto, tipo_movimiento, categoria, moneda")
     ]);
 
     const sales = salesRes.data || [];
     const products = productsRes.data || [];
     const expenses = expensesRes.data || [];
+    const movements = movementsRes.data || [];
 
-    const totalRevenue = sales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
-    const totalNet = sales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);
-    const totalExpenses = expenses.reduce((acc, e) => acc + (Number(e.monto) || 0), 0);
+    // Revenue should be based on movements of category "Venta" for ARS (main currency)
+    const totalRevenue = movements
+      .filter(m => m.categoria === "Venta" && m.moneda === "ARS")
+      .reduce((acc, m) => m.tipo_movimiento === "Ingreso" ? acc + (Number(m.monto) || 0) : acc - (Number(m.monto) || 0), 0);
+    
+    const totalGrossSales = sales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+    
+    const salesByChannel = {
+      Local: sales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
+      Web: sales.filter(s => s.canal_venta === "Web").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
+      MercadoLibre: sales.filter(s => s.canal_venta === "MercadoLibre").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0)
+    };
+    
+    const totalExpenses = movements
+      .filter(m => m.tipo_movimiento === "Egreso" && m.moneda === "ARS")
+      .reduce((acc, m) => acc + (Number(m.monto) || 0), 0);
+    
+    const totalIncome = movements
+      .filter(m => m.tipo_movimiento === "Ingreso" && m.moneda === "ARS")
+      .reduce((acc, m) => acc + (Number(m.monto) || 0), 0);
+
+    const realProfit = totalIncome - totalExpenses;
+
     const unpaidTotal = sales.reduce((acc, s) => s.pagado ? acc : acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0))), 0);
+
+    const totalCollected = totalRevenue;
 
     res.json({
       totalRevenue,
-      realProfit: totalNet - totalExpenses,
+      totalGrossSales,
+      totalCollected,
+      salesByChannel,
+      realProfit,
       stockAlerts: products.filter(p => Number(p.stock_actual) <= Number(p.stock_minimo)).length,
       arcaPending: sales.filter(s => s.estado_arca === "Pendiente").length,
       salesCount: sales.length,

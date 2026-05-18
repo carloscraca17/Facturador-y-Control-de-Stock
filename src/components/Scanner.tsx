@@ -32,7 +32,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     moneda: "ARS" as "ARS" | "USD",
     detalles_venta: "",
     pago_parcial: "0",
-    estado_entrega: "Pendiente" as "Pendiente" | "Entregado"
+    estado_entrega: "Pendiente" as "Pendiente" | "Entregado",
+    canal_venta: "Local" as "Local" | "MercadoLibre" | "Web"
   });
 
   const filteredProducts = products.filter(p => 
@@ -70,7 +71,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
 
     try {
       const payload = {
-        canal_venta: mode === "scanning" ? "Local" : manualData.canal_venta,
+        canal_venta: extraData.canal_venta || "Local",
         product_id: productId,
         ingreso_bruto: finalBruto,
         ingreso_neto: neto,
@@ -259,18 +260,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                                 />
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Canal</label>
-                            <select 
-                                value={manualData.canal_venta}
-                                onChange={(e) => setManualData({...manualData, canal_venta: e.target.value})}
-                                className="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
-                            >
-                                <option value="Local" className="bg-[#1e1e1e] text-white">Local</option>
-                                <option value="MercadoLibre" className="bg-[#1e1e1e] text-white">MercadoLibre</option>
-                                <option value="Web" className="bg-[#1e1e1e] text-white">Web</option>
-                            </select>
-                        </div>
                     </div>
                 </div>
             )}
@@ -369,14 +358,28 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Entregado</label>
-                        <button 
-                            onClick={() => setExtraData({...extraData, estado_entrega: extraData.estado_entrega === "Entregado" ? "Pendiente" : "Entregado"})}
-                            className={`w-full h-[46px] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border ${extraData.estado_entrega === "Entregado" ? 'bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-400'}`}
-                        >
-                            {extraData.estado_entrega === "Entregado" ? "ENTREGADO" : "E"}
-                        </button>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Entregado</label>
+                            <button 
+                                onClick={() => setExtraData({...extraData, estado_entrega: extraData.estado_entrega === "Entregado" ? "Pendiente" : "Entregado"})}
+                                className={`w-full h-[46px] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border ${extraData.estado_entrega === "Entregado" ? 'bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-400'}`}
+                            >
+                                {extraData.estado_entrega === "Entregado" ? "ENTREGADO" : "PENDIENTE"}
+                            </button>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Canal</label>
+                            <select 
+                                value={extraData.canal_venta}
+                                onChange={(e) => setExtraData({...extraData, canal_venta: e.target.value as any})}
+                                className="w-full h-[46px] bg-[#1e1e1e] border border-white/10 rounded-xl px-4 text-white focus:border-pink-500 outline-none text-xs font-bold"
+                            >
+                                <option value="Local">Local</option>
+                                <option value="Web">Web</option>
+                                <option value="MercadoLibre">MercadoLibre</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="p-4 bg-pink-500/10 border border-pink-500/20 rounded-2xl flex flex-wrap items-center justify-between gap-4">

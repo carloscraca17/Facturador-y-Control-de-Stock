@@ -397,6 +397,10 @@ export const Financials: React.FC = () => {
       });
   }, [movements, filterType, filterCurrency, startDate, endDate, searchTerm, sortOrder]);
 
+  // Reference date for resetting the "Ajuste" counter as requested by user
+  // This will hide "Ajuste" movements created before this specific timestamp in the summary panel
+  const ADJUSTMENT_RESET_DATE = new Date("2026-05-18T03:45:00Z").getTime();
+
   const panels = [
     { id: "Venta", label: "Ingresos por Ventas", color: "text-emerald-400", bg: "bg-emerald-500/10" },
     { id: "Varios", label: "Egresos Varios", color: "text-rose-400", bg: "bg-rose-500/10" },
@@ -763,9 +767,27 @@ export const Financials: React.FC = () => {
         {/* Right Column: Summaries */}
         <div className="space-y-8">
           {panels.map(panel => {
-            const panelMovements = filteredMovements.filter(m => m.categoria === panel.id);
-            const totalARS = panelMovements.filter(m => m.moneda === 'ARS').reduce((acc, m) => acc + (parseFloat(String(m.monto)) || 0), 0);
-            const totalUSD = panelMovements.filter(m => m.moneda === 'USD').reduce((acc, m) => acc + (parseFloat(String(m.monto)) || 0), 0);
+            // Summary cards logic
+            let panelMovements = filteredMovements.filter(m => m.categoria === panel.id);
+            
+            // Custom logic for Ajuste: reset to 0 by filtering old adjustments as requested
+            if (panel.id === "Ajuste") {
+              panelMovements = panelMovements.filter(m => new Date(m.fecha).getTime() > ADJUSTMENT_RESET_DATE);
+            }
+            
+            // Custom logic for Préstamo: reflect REAL GLOBAL situation (ignore active filters)
+            if (panel.id === "Préstamo") {
+              panelMovements = movements.filter(m => m.categoria === "Préstamo");
+            }
+
+            const totalARS = panelMovements.filter(m => m.moneda === 'ARS').reduce((acc, m) => {
+              const val = parseFloat(String(m.monto)) || 0;
+              return m.tipo_movimiento === 'Ingreso' ? acc + val : acc - val;
+            }, 0);
+            const totalUSD = panelMovements.filter(m => m.moneda === 'USD').reduce((acc, m) => {
+              const val = parseFloat(String(m.monto)) || 0;
+              return m.tipo_movimiento === 'Ingreso' ? acc + val : acc - val;
+            }, 0);
 
             return (
               <div key={panel.id} className="bg-[#1e1e1e] border border-white/5 p-8 rounded-[40px] space-y-4">

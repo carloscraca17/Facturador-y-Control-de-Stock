@@ -47,11 +47,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [stats, setStats] = useState<BusinessStats>({
     totalRevenue: 0,
+    totalGrossSales: 0,
+    totalCollected: 0,
     realProfit: 0,
     stockAlerts: 0,
     arcaPending: 0,
     salesCount: 0,
     unpaidTotal: 0,
+    salesByChannel: {
+      Local: 0,
+      Web: 0,
+      MercadoLibre: 0
+    }
   });
 
   const login = (newToken: string, newUser: AppUser) => {

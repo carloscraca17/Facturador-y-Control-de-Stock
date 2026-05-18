@@ -67,11 +67,18 @@ export interface AppUser {
 
 export interface BusinessStats {
   totalRevenue: number;
+  totalGrossSales: number;
+  totalCollected: number;
   realProfit: number;
   stockAlerts: number;
   arcaPending: number;
   salesCount: number;
   unpaidTotal: number;
+  salesByChannel: {
+    Local: number;
+    Web: number;
+    MercadoLibre: number;
+  };
 }
 
 export interface PaginatedResponse<T> {
