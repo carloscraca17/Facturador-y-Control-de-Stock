@@ -86,6 +86,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch(url, { 
         headers: { "Authorization": token } 
       });
+      if (res.status === 401 && token !== "glow-manager-session-true") {
+        logoutAction();
+        return;
+      }
       if (res.ok) {
         const result = await res.json();
         setProducts(result.data);
@@ -102,6 +106,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch(`/api/sales?page=${page}&limit=${limit}`, { 
         headers: { "Authorization": token } 
       });
+      if (res.status === 401 && token !== "glow-manager-session-true") {
+        logoutAction();
+        return;
+      }
       if (res.ok) {
         const result = await res.json();
         const formattedSales = result.data.map((s: any) => ({
@@ -141,6 +149,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
 
       clearTimeout(timeoutId);
+
+      if ((statsRes.status === 401 || prodsRes.status === 401 || salesRes.status === 401 || expRes.status === 401 || movRes.status === 401 || custRes.status === 401) && token !== "glow-manager-session-true") {
+        logoutAction();
+        return;
+      }
+
       setConnectionError(null);
 
       if (statsRes.ok) setStats(await statsRes.json());
@@ -170,7 +184,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err: any) {
       console.error("Error fetching data:", err);
-      setConnectionError(`Error de conexion: ${err.message || JSON.stringify(err)}`);
+      if (err.name !== "AbortError") {
+        setConnectionError(`Error de conexion: ${err.message || JSON.stringify(err)}`);
+      }
     } finally {
       setLoading(false);
     }

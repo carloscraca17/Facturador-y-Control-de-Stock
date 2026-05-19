@@ -60,6 +60,10 @@ const authenticate = async (req: any, res: any, next: any) => {
         (req as any).user = user;
         return next();
       } else if (error) {
+        if (error.message && error.message.includes("token is expired")) {
+          console.warn("[AUTH] Session has expired. Prompting login.");
+          return res.status(401).json({ error: "Unauthorized", details: "Session expired" });
+        }
         console.warn("[AUTH] Supabase verification failed:", error.message);
       }
     } catch (err: any) {
@@ -720,8 +724,9 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       if (prod) productCost = Number(prod.costo_unitario) || 0;
     }
 
-    const bruto = Number(s.ingreso_bruto) !== undefined ? Number(s.ingreso_bruto) : oldSale.ingreso_bruto;
-    const desc = Number(s.descuento) !== undefined ? Number(s.descuento) : oldSale.descuento;
+    const bruto = (s.ingreso_bruto !== undefined && s.ingreso_bruto !== null) ? Number(s.ingreso_bruto) : Number(oldSale.ingreso_bruto || 0);
+    const desc = (s.descuento !== undefined && s.descuento !== null) ? Number(s.descuento) : Number(oldSale.descuento || 0);
+    const pago_parcial = (s.pago_parcial !== undefined && s.pago_parcial !== null) ? Number(s.pago_parcial) : Number(oldSale.pago_parcial || 0);
 
     // Dynamic user retrieval to avoid violating FK constraints on customers table
     const cleanToken = getSessionToken(req);
@@ -792,14 +797,43 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       }
     }
 
-    const updateData = {
-      ...s,
-      userId: activeUserId,
-      ingreso_bruto: bruto,
-      ingreso_neto: (bruto - desc) - productCost,
-      descuento: desc,
-      pago_parcial: Number(s.pago_parcial) !== undefined ? Number(s.pago_parcial) : oldSale.pago_parcial,
-    };
+    const updateData: any = {};
+    const allowedColumns = [
+      "canal_venta",
+      "product_id",
+      "ingreso_bruto",
+      "comision_plataforma",
+      "costo_envio",
+      "ingreso_neto",
+      "descuento",
+      "cliente_nombre",
+      "cliente_apellido",
+      "pagado",
+      "estado_arca",
+      "cae_arca",
+      "userId",
+      "fecha_venta",
+      "moneda",
+      "pago_parcial",
+      "detalles_venta",
+      "estado_entrega"
+    ];
+
+    for (const key of allowedColumns) {
+      if (s[key] !== undefined) {
+        updateData[key] = s[key];
+      }
+    }
+
+    // Set correctly calculated and structured values
+    updateData.userId = activeUserId;
+    updateData.ingreso_bruto = bruto;
+    updateData.ingreso_neto = (bruto - desc) - productCost;
+    updateData.descuento = desc;
+    updateData.pago_parcial = pago_parcial;
+    if (s.pagado !== undefined) {
+      updateData.pagado = Boolean(s.pagado);
+    }
 
     // 2. Perform the update
     const { data: updatedSale, error: updateError } = await supabase
@@ -1333,8 +1367,23 @@ app.put("/api/customers/:id", authenticate, async (req, res) => {
       });
     }
 
+    const cleanUpdateData: any = {};
+    const allowedCustomerColumns = [
+      "nombre",
+      "apellido",
+      "email",
+      "telefono",
+      "userId",
+      "canal"
+    ];
+    for (const key of allowedCustomerColumns) {
+      if (req.body[key] !== undefined) {
+        cleanUpdateData[key] = req.body[key];
+      }
+    }
+    
     // Set dynamic userId exactly to the logged in user
-    updateData.userId = user.id;
+    cleanUpdateData.userId = user.id;
 
     // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
     if (supabase && user && user.id) {
@@ -1381,7 +1430,7 @@ app.put("/api/customers/:id", authenticate, async (req, res) => {
       }
     }
 
-    const { data, error } = await supabase.from("customers").update(updateData).eq("id", req.params.id).select().single();
+    const { data, error } = await supabase.from("customers").update(cleanUpdateData).eq("id", req.params.id).select().single();
     if (error) {
       console.error("[CUST_PUT] Full Error Object:", JSON.stringify(error, null, 2));
       if (error.code === '23503') {
