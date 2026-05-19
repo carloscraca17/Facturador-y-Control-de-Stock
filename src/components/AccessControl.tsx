@@ -9,6 +9,7 @@ export function AccessControl() {
   const [error, setError] = useState<string | null>(null);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     username: "",
@@ -103,13 +104,19 @@ export function AccessControl() {
   };
 
   const handleDeleteUser = async (id: string) => {
-    if (!confirm("¿Estás seguro de que deseas eliminar este usuario?")) return;
+    setDeletingUserId(id);
+  };
+
+  const executeDeleteUser = async (id: string) => {
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: "DELETE",
         headers: { "Authorization": localStorage.getItem("glow_token") || "glow-manager-session-true" }
       });
-      if (!res.ok) throw new Error("Error al eliminar usuario");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.details || "Error al eliminar usuario");
+      }
       fetchUsers();
     } catch (err: any) {
       setError(err.message);
@@ -288,20 +295,45 @@ export function AccessControl() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all">
+              <div className="flex flex-col gap-2 opacity-60 hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
                 <button 
                   onClick={() => handleEditClick(user)}
                   className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 hover:text-white transition-all"
+                  title="Editar usuario"
                 >
                   <Edit3 size={16} />
                 </button>
                 <button 
                   onClick={() => handleDeleteUser(user.id)}
                   className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
+                  title="Eliminar usuario"
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
+
+              {deletingUserId === user.id && (
+                <div className="absolute inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center z-20 animate-fade-in">
+                  <p className="text-white text-sm font-semibold mb-3">¿Eliminar usuario "{user.username}"?</p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setDeletingUserId(null);
+                        executeDeleteUser(user.id);
+                      }}
+                      className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-rose-500/20"
+                    >
+                      Sí, eliminar
+                    </button>
+                    <button
+                      onClick={() => setDeletingUserId(null)}
+                      className="bg-white/10 hover:bg-white/20 text-white/80 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           ))}
         </div>

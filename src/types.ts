@@ -70,6 +70,21 @@ export interface AppUser {
   created_at?: string;
 }
 
+export interface Customer {
+  id: string;
+  nombre: string;
+  apellido?: string;
+  email?: string;
+  telefono?: string;
+  userId: string;
+  canal?: "LOCAL" | "WEB" | "MERCADOLIBRE" | string;
+  created_at?: string;
+  totalPurchased?: number;
+  debt?: number;
+  salesCount?: number;
+  purchases?: Sale[];
+}
+
 export interface BusinessStats {
   totalRevenue: number;
   totalGrossSales: number;

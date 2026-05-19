@@ -3,6 +3,7 @@ import { DataProvider, useData } from "./components/DataProvider";
 import { Dashboard } from "./components/Dashboard";
 import { Inventory } from "./components/Inventory";
 import { Financials } from "./components/Financials";
+import { Customers } from "./components/Customers";
 import { AccessControl } from "./components/AccessControl";
 import { Sidebar } from "./components/Sidebar";
 import { BusinessChat } from "./components/BusinessChat";
@@ -11,7 +12,7 @@ import { motion } from "motion/react";
 
 const MainContent: React.FC = () => {
   const { user, loading, login } = useData();
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "inventory" | "financials" | "access">("dashboard");
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "inventory" | "financials" | "customers" | "access">("dashboard");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -144,6 +145,7 @@ const MainContent: React.FC = () => {
           {currentPage === "dashboard" && <Dashboard onPageChange={setCurrentPage} />}
           {currentPage === "inventory" && <Inventory />}
           {currentPage === "financials" && <Financials />}
+          {currentPage === "customers" && <Customers />}
           {currentPage === "access" && <AccessControl />}
         </main>
       </div>

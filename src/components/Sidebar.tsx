@@ -1,11 +1,11 @@
 import React from "react";
-import { LayoutDashboard, Box, Wallet, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Box, Wallet, LogOut, ShieldCheck, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { useData } from "./DataProvider";
 
 interface SidebarProps {
-  currentPage: "dashboard" | "inventory" | "financials" | "access";
-  onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;
+  currentPage: "dashboard" | "inventory" | "financials" | "customers" | "access";
+  onPageChange: (page: "dashboard" | "inventory" | "financials" | "customers" | "access") => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) => {
@@ -15,6 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) =
     { id: "dashboard", icon: LayoutDashboard, label: "Panel" },
     { id: "inventory", icon: Box, label: "Inventario" },
     { id: "financials", icon: Wallet, label: "Finanzas" },
+    { id: "customers", icon: Users, label: "Clientes" },
     { id: "access", icon: ShieldCheck, label: "Acceso" },
   ].filter(item => {
     if (!user) return false;
@@ -52,6 +53,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) =
             </button>
           ))}
         </div>
+
+        {/* Active User Badge on Sidebar */}
+        {user && (
+          <div className="flex flex-col items-center gap-1.5 px-2 select-none group cursor-default">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-pink-500/20 to-orange-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400 font-extrabold text-xs tracking-wider uppercase shadow-inner group-hover:scale-105 transition-transform">
+              {user.username.slice(0, 2)}
+            </div>
+            <div className="flex flex-col items-center max-w-[80px] text-center">
+              <span className="text-white text-[10px] font-bold leading-none tracking-tight truncate max-w-full uppercase mb-1 group-hover:text-pink-400 transition-colors">
+                {user.username}
+              </span>
+              <span className="text-[7px] text-white/40 font-bold font-mono uppercase tracking-widest leading-none">
+                {user.role === 'admin' ? 'Total' : 'Gestor'}
+              </span>
+            </div>
+          </div>
+        )}
 
         <button 
           onClick={() => logout()}

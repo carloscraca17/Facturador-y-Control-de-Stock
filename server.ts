@@ -42,14 +42,116 @@ app.use(cors());
 app.use(express.json());
 
 // Auth Middleware
-const authenticate = (req: any, res: any, next: any) => {
-  const token = req.headers.authorization;
-  if (token === AUTH_TOKEN) {
-    next();
-  } else {
-    console.warn(`[AUTH] Unauthorized access attempt. Received: "${token}"`);
-    res.status(401).json({ error: "Unauthorized" });
+const authenticate = async (req: any, res: any, next: any) => {
+  const token = getSessionToken(req);
+  if (!token) {
+    console.warn("[AUTH] No token found in session or headers");
+    return res.status(401).json({ error: "Unauthorized", details: "No active session" });
   }
+
+  if (token === AUTH_TOKEN) {
+    return next();
+  }
+
+  if (supabase) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (user && !error) {
+        (req as any).user = user;
+        return next();
+      } else if (error) {
+        console.warn("[AUTH] Supabase verification failed:", error.message);
+      }
+    } catch (err: any) {
+      console.warn("[AUTH] Error verifying token:", err.message);
+    }
+  }
+
+  console.warn(`[AUTH] Unauthorized access attempt.`);
+  return res.status(401).json({ error: "Unauthorized", details: "No active session" });
+};
+
+// Robust session token parser from HTTP headers and cookies
+const getSessionToken = (req: any): string => {
+  // 1. Try Authorization header
+  const authHeader = req.headers.authorization || "";
+  if (authHeader) {
+    const cleanToken = authHeader.replace(/^Bearer\s+/, "").trim();
+    if (cleanToken && cleanToken !== "undefined" && cleanToken !== "null" && cleanToken !== AUTH_TOKEN) {
+      return cleanToken;
+    }
+    if (cleanToken === AUTH_TOKEN) {
+      return AUTH_TOKEN;
+    }
+  }
+
+  // 2. Parse from Cookie header
+  const cookieHeader = req.headers.cookie || "";
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(";").reduce((acc: any, c: string) => {
+      const parts = c.trim().split("=");
+      if (parts.length >= 2) {
+        acc[parts[0]] = parts.slice(1).join("=");
+      }
+      return acc;
+    }, {});
+
+    // Try finding standard supabase cookie references (like sb-<reference>-auth-token)
+    const supabaseCookieKey = Object.keys(cookies).find(key => 
+      key.startsWith("sb-") && (key.endsWith("-auth-token") || key.includes("access-token"))
+    );
+
+    if (supabaseCookieKey) {
+      try {
+        const rawValue = cookies[supabaseCookieKey];
+        const value = decodeURIComponent(rawValue);
+        if (value.startsWith("{")) {
+          const parsed = JSON.parse(value);
+          if (parsed.access_token) return parsed.access_token;
+        } else if (value.startsWith("[")) {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed) && parsed[0]) {
+            return parsed[0];
+          }
+        }
+        return value;
+      } catch (err: any) {
+        return cookies[supabaseCookieKey];
+      }
+    }
+
+    // Try finding chunked cookies sb-<project>-auth-token.0, .1 etc.
+    const chunkedKey = Object.keys(cookies).find(key => key.startsWith("sb-") && key.includes("-auth-token."));
+    if (chunkedKey) {
+      const prefix = chunkedKey.split(".")[0];
+      let chunkIndex = 0;
+      let fullValue = "";
+      while (cookies[`${prefix}.${chunkIndex}`]) {
+        fullValue += cookies[`${prefix}.${chunkIndex}`];
+        chunkIndex++;
+      }
+      try {
+        const decoded = decodeURIComponent(fullValue);
+        if (decoded.startsWith("{")) {
+          const parsed = JSON.parse(decoded);
+          if (parsed.access_token) return parsed.access_token;
+        } else if (decoded.startsWith("[")) {
+          const parsed = JSON.parse(decoded);
+          if (Array.isArray(parsed) && parsed[0]) {
+            return parsed[0];
+          }
+        }
+        return decoded;
+      } catch (err: any) {
+        console.warn("[AUTH_DEBUG] Failed parsing chunked keys:", err.message);
+      }
+    }
+
+    if (cookies["sb-access-token"]) return cookies["sb-access-token"];
+    if (cookies["supabase-auth-token"]) return cookies["supabase-auth-token"];
+  }
+
+  return "";
 };
 
 // Global Guard for all /api routes
@@ -74,15 +176,16 @@ app.get("/api/health", async (req, res) => {
       return res.json({ status: "config_missing", message: "Supabase configuration is missing." });
     }
 
-    const [prod, sale, exp, mov, user] = await Promise.all([
+    const [prod, sale, exp, mov, user, cust] = await Promise.all([
       supabase.from("products").select("id").limit(1),
       supabase.from("sales").select("id").limit(1),
       supabase.from("expenses").select("id").limit(1),
       supabase.from("movements").select("id").limit(1),
-      supabase.from("app_users").select("id").limit(1)
+      supabase.from("app_users").select("id").limit(1),
+      supabase.from("customers").select("id").limit(1)
     ]);
 
-    if (prod.error || sale.error || exp.error || mov.error || user.error) {
+    if (prod.error || sale.error || exp.error || mov.error || user.error || cust.error) {
       return res.json({ 
         status: "table_error", 
         details: { 
@@ -90,7 +193,8 @@ app.get("/api/health", async (req, res) => {
           sales: sale.error?.message || "OK", 
           expenses: exp.error?.message || "OK",
           movements: mov.error?.message || "OK",
-          app_users: user.error?.message || "OK"
+          app_users: user.error?.message || "OK",
+          customers: cust.error?.message || "OK"
         }
       });
     }
@@ -129,22 +233,88 @@ app.post("/api/login", async (req, res) => {
 
     if (error) console.warn("[LOGIN] Supabase check error:", error.message);
 
+    let realUser: any = null;
     if (user) {
-      return res.json({ 
-        token: AUTH_TOKEN, 
-        user: { id: user.id, username: user.username, role: user.role, permissions: user.permissions } 
+      realUser = { id: user.id, username: user.username, role: user.role, permissions: user.permissions };
+    } else if (username === "admin" && password === "admin123") {
+      realUser = { id: "admin", username: "admin", role: "admin", permissions: ["dashboard", "inventory", "financials", "access"] };
+    }
+
+    if (realUser) {
+      const email = `${username.toLowerCase()}@glowmanager.com`;
+      const supabasePassword = password.length >= 6 ? password : `${password}123456`;
+      let token = AUTH_TOKEN;
+      let finalUserId = realUser.id;
+
+      try {
+        // 1. Try to sign in the user
+        let { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: supabasePassword
+        });
+
+        // 2. If sign-in fails, attempt to create the user first
+        if (signInError) {
+          console.log(`[LOGIN] User ${username} not found in auth.users or wrong pass. Creating user via admin interface...`);
+          const { data: newAuthUser, error: createError } = await supabase.auth.admin.createUser({
+            email,
+            password: supabasePassword,
+            email_confirm: true,
+            user_metadata: { username, role: realUser.role }
+          });
+
+          if (!createError && newAuthUser?.user) {
+            console.log(`[LOGIN] User ${username} created in auth.users directly. ID: ${newAuthUser.user.id}`);
+            // Force sign in now that they are created
+            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+              email,
+              password: supabasePassword
+            });
+            if (!retryError && retryData?.session) {
+              token = retryData.session.access_token;
+              finalUserId = retryData.user.id;
+            }
+          } else {
+            console.warn(`[LOGIN] Admin user creation failed for ${username}:`, createError?.message);
+            // Fallback to signUp
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email,
+              password: supabasePassword,
+              options: { data: { username, role: realUser.role } }
+            });
+            if (!signUpError && signUpData?.session) {
+              token = signUpData.session.access_token;
+              finalUserId = signUpData.user?.id || finalUserId;
+            }
+          }
+        } else if (authData && authData.session) {
+          token = authData.session.access_token;
+          finalUserId = authData.user.id;
+        }
+
+        // 3. Update the app_users table record so its ID matches the auth.users ID
+        // This ensures any DB references or joins behave perfectly!
+        if (finalUserId && finalUserId !== "admin" && user && user.id !== finalUserId) {
+          console.log(`[LOGIN] Updating app_users ID from ${user.id} to auth.users ID ${finalUserId}`);
+          const { error: updateErr } = await supabase
+            .from("app_users")
+            .update({ id: finalUserId })
+            .eq("id", user.id);
+          if (updateErr) {
+            console.warn("[LOGIN] FAILED to update app_users ID matching auth.users:", updateErr.message);
+          }
+        }
+      } catch (authErr: any) {
+        console.warn("[LOGIN] Automatic auth.users sync failed:", authErr.message);
+      }
+
+      return res.json({
+        token,
+        user: { id: finalUserId, username: realUser.username, role: realUser.role, permissions: realUser.permissions }
       });
     }
 
-    // Fallback for admin initial
-    if (username === "admin" && password === "admin123") {
-      res.json({ 
-        token: AUTH_TOKEN,
-        user: { id: "admin", username: "admin", role: "admin", permissions: ["dashboard", "inventory", "financials", "access"] } 
-      });
-    } else {
-      res.status(401).json({ error: "Credenciales inválidas" });
-    }
+    res.status(401).json({ error: "Credenciales inválidas" });
   } catch (err: any) {
     console.error("[LOGIN] Fatal:", err);
     res.status(500).json({ error: "Error de servidor al iniciar sesión" });
@@ -377,8 +547,78 @@ app.post("/api/sales", authenticate, async (req, res) => {
     const bruto = Number(s.ingreso_bruto) || 0;
     const desc = Number(s.descuento) || 0;
 
+    // Dynamic user retrieval to avoid violating FK constraints on customers table
+    const cleanToken = getSessionToken(req);
+    let user: any = (req as any).user || null;
+    if (supabase) {
+      try {
+        if (!user && cleanToken && cleanToken !== AUTH_TOKEN) {
+          const { data: authData, error: authError } = await supabase.auth.getUser(cleanToken);
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+        if (!user) {
+          const { data: authData, error: authError } = await supabase.auth.getUser();
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+      } catch (err) {
+        console.warn("[SALES_POST] Failed to get user from Supabase Auth:", err);
+      }
+    }
+
+    const activeUserId = user?.id || s.userId || "admin";
+
+    // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
+    if (supabase && user && user.id) {
+      try {
+        const { data: matchedAppUser } = await supabase
+          .from("app_users")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!matchedAppUser) {
+          console.log(`[SALES_POST] Synchronizing new or active user "${user.id}" in app_users table`);
+          const userMail = user.email || "";
+          const metadataUsername = user.user_metadata?.username || userMail.split("@")[0] || "manager";
+          
+          const { data: userByUsername } = await supabase
+            .from("app_users")
+            .select()
+            .eq("username", metadataUsername)
+            .maybeSingle();
+
+          if (userByUsername) {
+            await supabase
+              .from("app_users")
+              .update({ id: user.id })
+              .eq("id", userByUsername.id);
+            console.log(`[SALES_POST] Updated app_users ID from ${userByUsername.id} to ${user.id}`);
+          } else {
+            const defaultRole = user.user_metadata?.role || "manager";
+            await supabase
+              .from("app_users")
+              .insert([{
+                id: user.id,
+                username: metadataUsername,
+                password: "custom_user_123",
+                role: defaultRole,
+                permissions: ["dashboard", "inventory", "financials", "customers"]
+              }]);
+            console.log(`[SALES_POST] Created app_users row for ${metadataUsername}`);
+          }
+        }
+      } catch (syncErr: any) {
+        console.warn("[SALES_POST] Error in app_users sync:", syncErr.message);
+      }
+    }
+
     const sale = {
       ...s,
+      userId: activeUserId,
       ingreso_bruto: bruto,
       ingreso_neto: (bruto - desc) - productCost,
       descuento: desc,
@@ -388,6 +628,29 @@ app.post("/api/sales", authenticate, async (req, res) => {
 
     const { data, error } = await supabase.from("sales").insert([sale]).select().single();
     if (error) throw error;
+
+    // Automaticaly register/update customer
+    if (sale.cliente_nombre) {
+      try {
+        const { data: existingCust } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("nombre", sale.cliente_nombre)
+          .eq("apellido", sale.cliente_apellido || "")
+          .maybeSingle();
+
+        if (!existingCust) {
+          await supabase.from("customers").insert([{
+            nombre: sale.cliente_nombre,
+            apellido: sale.cliente_apellido || "",
+            userId: activeUserId,
+            canal: s.canal_venta || "LOCAL"
+          }]);
+        }
+      } catch (custErr) {
+        console.error("[CUST_AUTO] Error:", custErr);
+      }
+    }
 
     // Decrement stock
     if (data.product_id) {
@@ -460,8 +723,78 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     const bruto = Number(s.ingreso_bruto) !== undefined ? Number(s.ingreso_bruto) : oldSale.ingreso_bruto;
     const desc = Number(s.descuento) !== undefined ? Number(s.descuento) : oldSale.descuento;
 
+    // Dynamic user retrieval to avoid violating FK constraints on customers table
+    const cleanToken = getSessionToken(req);
+    let user: any = (req as any).user || null;
+    if (supabase) {
+      try {
+        if (!user && cleanToken && cleanToken !== AUTH_TOKEN) {
+          const { data: authData, error: authError } = await supabase.auth.getUser(cleanToken);
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+        if (!user) {
+          const { data: authData, error: authError } = await supabase.auth.getUser();
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+      } catch (err) {
+        console.warn("[SALES_PUT] Failed to get user from Supabase Auth:", err);
+      }
+    }
+
+    const activeUserId = user?.id || s.userId || oldSale.userId || "admin";
+
+    // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
+    if (supabase && user && user.id) {
+      try {
+        const { data: matchedAppUser } = await supabase
+          .from("app_users")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!matchedAppUser) {
+          console.log(`[SALES_PUT] Synchronizing new or active user "${user.id}" in app_users table`);
+          const userMail = user.email || "";
+          const metadataUsername = user.user_metadata?.username || userMail.split("@")[0] || "manager";
+          
+          const { data: userByUsername } = await supabase
+            .from("app_users")
+            .select()
+            .eq("username", metadataUsername)
+            .maybeSingle();
+
+          if (userByUsername) {
+            await supabase
+              .from("app_users")
+              .update({ id: user.id })
+              .eq("id", userByUsername.id);
+            console.log(`[SALES_PUT] Updated app_users ID from ${userByUsername.id} to ${user.id}`);
+          } else {
+            const defaultRole = user.user_metadata?.role || "manager";
+            await supabase
+              .from("app_users")
+              .insert([{
+                id: user.id,
+                username: metadataUsername,
+                password: "custom_user_123",
+                role: defaultRole,
+                permissions: ["dashboard", "inventory", "financials", "customers"]
+              }]);
+            console.log(`[SALES_PUT] Created app_users row for ${metadataUsername}`);
+          }
+        }
+      } catch (syncErr: any) {
+        console.warn("[SALES_PUT] Error in app_users sync:", syncErr.message);
+      }
+    }
+
     const updateData = {
       ...s,
+      userId: activeUserId,
       ingreso_bruto: bruto,
       ingreso_neto: (bruto - desc) - productCost,
       descuento: desc,
@@ -477,6 +810,29 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       .single();
 
     if (updateError) throw updateError;
+
+    // Automaticaly register/update customer on update as well
+    if (updatedSale.cliente_nombre) {
+      try {
+        const { data: existingCust } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("nombre", updatedSale.cliente_nombre)
+          .eq("apellido", updatedSale.cliente_apellido || "")
+          .maybeSingle();
+
+        if (!existingCust) {
+          await supabase.from("customers").insert([{
+            nombre: updatedSale.cliente_nombre,
+            apellido: updatedSale.cliente_apellido || "",
+            userId: activeUserId,
+            canal: updatedSale.canal_venta || "LOCAL"
+          }]);
+        }
+      } catch (custErr) {
+        console.error("[CUST_AUTO_UP] Error:", custErr);
+      }
+    }
 
     // 3. Sync with movements
     const oldPaid = oldSale.pagado ? Number(oldSale.ingreso_bruto) : (Number(oldSale.pago_parcial) || 0);
@@ -773,6 +1129,283 @@ app.delete("/api/movements/:id", authenticate, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Customers API
+app.get("/api/customers", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .order("nombre", { ascending: true });
+    
+    if (error) {
+      console.error("[CUST_LIST] Error:", JSON.stringify(error, null, 2));
+      if ((error as any).code === '42P01') {
+        return res.status(404).json({ 
+          error: "La tabla 'customers' no existe.",
+          details: "Debes crear la tabla 'customers' en Supabase con las columnas: nombre, apellido, canal, userId."
+        });
+      }
+      throw error;
+    }
+
+    // Fetch all sales to calculate balances and purchases
+    const { data: allSales } = await supabase.from("sales").select("*, product_info:products(nombre, sku_barcode)");
+    
+    const enrichedData = (data || []).map(cust => {
+      const custSales = (allSales || []).filter(s => 
+        String(s.cliente_nombre).toLowerCase() === String(cust.nombre).toLowerCase() && 
+        String(s.cliente_apellido || "").toLowerCase() === String(cust.apellido || "").toLowerCase()
+      );
+
+      const totalPurchased = custSales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+      const totalPaid = custSales.reduce((acc, s) => {
+        if (s.pagado) return acc + (Number(s.ingreso_bruto) || 0);
+        return acc + (Number(s.pago_parcial) || 0);
+      }, 0);
+
+      return {
+        ...cust,
+        totalPurchased,
+        debt: totalPurchased - totalPaid,
+        salesCount: custSales.length,
+        purchases: custSales
+      };
+    });
+
+    res.json(enrichedData);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/customers", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    
+    let customerData = req.body;
+    
+    // Extract dynamic token from Authorization header or Cookies
+    const cleanToken = getSessionToken(req);
+
+    // Obtain the real authenticated user from Supabase Auth dynamically
+    let user: any = (req as any).user || null;
+    if (supabase) {
+      try {
+        if (!user && cleanToken && cleanToken !== AUTH_TOKEN) {
+          const { data: authData, error: authError } = await supabase.auth.getUser(cleanToken);
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+        
+        // Strict parameterless fallback
+        if (!user) {
+          const { data: authData, error: authError } = await supabase.auth.getUser();
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+      } catch (err) {
+        console.warn("[CUST_POST] Failed to get user from Supabase Auth:", err);
+      }
+    }
+
+    // Abort immediately with 401 if we do NOT have a valid active user session
+    if (!user || !user.id) {
+      return res.status(401).json({ 
+        error: "No hay sesión activa",
+        details: "Debes iniciar sesión con un usuario válido para guardar clientes." 
+      });
+    }
+
+    // Set dynamic userId exactly to the logged in user
+    customerData.userId = user.id;
+
+    // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
+    if (supabase && user && user.id) {
+      try {
+        const { data: matchedAppUser } = await supabase
+          .from("app_users")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!matchedAppUser) {
+          console.log(`[CUST_POST] Synchronizing new or active user "${user.id}" in app_users table`);
+          const userMail = user.email || "";
+          const metadataUsername = user.user_metadata?.username || userMail.split("@")[0] || "manager";
+          
+          const { data: userByUsername } = await supabase
+            .from("app_users")
+            .select()
+            .eq("username", metadataUsername)
+            .maybeSingle();
+
+          if (userByUsername) {
+            await supabase
+              .from("app_users")
+              .update({ id: user.id })
+              .eq("id", userByUsername.id);
+            console.log(`[CUST_POST] Updated app_users ID from ${userByUsername.id} to ${user.id}`);
+          } else {
+            const defaultRole = user.user_metadata?.role || "manager";
+            await supabase
+              .from("app_users")
+              .insert([{
+                id: user.id,
+                username: metadataUsername,
+                password: "custom_user_123",
+                role: defaultRole,
+                permissions: ["dashboard", "inventory", "financials", "customers"]
+              }]);
+            console.log(`[CUST_POST] Created app_users row for ${metadataUsername}`);
+          }
+        }
+      } catch (syncErr: any) {
+        console.warn("[CUST_POST] Error in app_users sync:", syncErr.message);
+      }
+    }
+
+    const { data, error } = await supabase.from("customers").insert([customerData]).select().single();
+    
+    if (error) {
+      console.error("[CUST_POST] Full Error Object:", JSON.stringify(error, null, 2));
+      // Helpful error message for foreign key violation
+      if (error.code === '23503') {
+        return res.status(400).json({ 
+          error: "Error de Relación: El ID de usuario no existe en la tabla de destino.",
+          details: "La tabla de clientes requiere una Foreign Key válida. Si ya tienes la sesión activa, ejecuta el script SQL sugerido para que la FK apunte directamente a auth.users."
+        });
+      }
+      if (error.code === '22P02') {
+         return res.status(400).json({ 
+          error: "Error de Formato: El ID de usuario no tiene el formato correcto.",
+          details: "Asegúrate de estar usando un usuario real creado en el sistema."
+        });
+      }
+      throw error;
+    }
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/customers/:id", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    
+    let updateData = req.body;
+    
+    // Extract dynamic token from Authorization header or Cookies
+    const cleanToken = getSessionToken(req);
+
+    // Obtain the real authenticated user from Supabase Auth dynamically
+    let user: any = (req as any).user || null;
+    if (supabase) {
+      try {
+        if (!user && cleanToken && cleanToken !== AUTH_TOKEN) {
+          const { data: authData, error: authError } = await supabase.auth.getUser(cleanToken);
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+        
+        // Strict parameterless fallback
+        if (!user) {
+          const { data: authData, error: authError } = await supabase.auth.getUser();
+          if (authData?.user && !authError) {
+            user = authData.user;
+          }
+        }
+      } catch (err) {
+        console.warn("[CUST_PUT] Failed to get user from Supabase Auth:", err);
+      }
+    }
+
+    // Abort immediately with 401 if we do NOT have a valid active user session
+    if (!user || !user.id) {
+       return res.status(401).json({ 
+        error: "No hay sesión activa",
+        details: "Debes iniciar sesión con un usuario válido para modificar clientes." 
+      });
+    }
+
+    // Set dynamic userId exactly to the logged in user
+    updateData.userId = user.id;
+
+    // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
+    if (supabase && user && user.id) {
+      try {
+        const { data: matchedAppUser } = await supabase
+          .from("app_users")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!matchedAppUser) {
+          console.log(`[CUST_PUT] Synchronizing new or active user "${user.id}" in app_users table`);
+          const userMail = user.email || "";
+          const metadataUsername = user.user_metadata?.username || userMail.split("@")[0] || "manager";
+          
+          const { data: userByUsername } = await supabase
+            .from("app_users")
+            .select()
+            .eq("username", metadataUsername)
+            .maybeSingle();
+
+          if (userByUsername) {
+            await supabase
+              .from("app_users")
+              .update({ id: user.id })
+              .eq("id", userByUsername.id);
+            console.log(`[CUST_PUT] Updated app_users ID from ${userByUsername.id} to ${user.id}`);
+          } else {
+            const defaultRole = user.user_metadata?.role || "manager";
+            await supabase
+              .from("app_users")
+              .insert([{
+                id: user.id,
+                username: metadataUsername,
+                password: "custom_user_123",
+                role: defaultRole,
+                permissions: ["dashboard", "inventory", "financials", "customers"]
+              }]);
+            console.log(`[CUST_PUT] Created app_users row for ${metadataUsername}`);
+          }
+        }
+      } catch (syncErr: any) {
+        console.warn("[CUST_PUT] Error in app_users sync:", syncErr.message);
+      }
+    }
+
+    const { data, error } = await supabase.from("customers").update(updateData).eq("id", req.params.id).select().single();
+    if (error) {
+      console.error("[CUST_PUT] Full Error Object:", JSON.stringify(error, null, 2));
+      if (error.code === '23503') {
+        throw new Error("Error de Relación: El usuario asignado no existe en la base de datos.");
+      }
+      throw error;
+    }
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/customers/:id", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { error } = await supabase.from("customers").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Seed API
 app.post("/api/admin/seed", async (req, res) => {

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Product, Sale, Expense, BusinessStats, Movement, AppUser } from "../types";
+import { Product, Sale, Expense, BusinessStats, Movement, AppUser, Customer } from "../types";
 
 interface DataContextType {
   user: AppUser | null;
@@ -12,6 +12,8 @@ interface DataContextType {
   setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
   movements: Movement[];
   setMovements: React.Dispatch<React.SetStateAction<Movement[]>>;
+  customers: Customer[];
+  setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   stats: BusinessStats;
   token: string | null;
   connectionError: string | null;
@@ -34,6 +36,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [salesTotal, setSalesTotal] = useState(0);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("glow_token"));
   const [user, setUser] = useState<AppUser | null>(() => {
@@ -128,18 +131,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const headers = { "Authorization": token };
-      const [statsRes, prodsRes, salesRes, expRes, movRes] = await Promise.all([
+      const [statsRes, prodsRes, salesRes, expRes, movRes, custRes] = await Promise.all([
         fetch("/api/stats", { headers, signal: controller.signal }),
         fetch("/api/products?page=1&limit=5000", { headers, signal: controller.signal }),
         fetch("/api/sales?page=1&limit=20", { headers, signal: controller.signal }),
         fetch("/api/expenses", { headers, signal: controller.signal }),
-        fetch("/api/movements", { headers, signal: controller.signal })
+        fetch("/api/movements", { headers, signal: controller.signal }),
+        fetch("/api/customers", { headers, signal: controller.signal })
       ]);
 
       clearTimeout(timeoutId);
       setConnectionError(null);
 
       if (statsRes.ok) setStats(await statsRes.json());
+      if (custRes.ok) setCustomers(await custRes.json());
 
       if (prodsRes.ok) {
         const result = await prodsRes.json();
@@ -189,6 +194,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setExpenses,
       movements,
       setMovements,
+      customers,
+      setCustomers,
       stats,
       token,
       connectionError,
