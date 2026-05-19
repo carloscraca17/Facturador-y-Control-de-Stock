@@ -22,7 +22,6 @@ import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 import { Scanner } from "./Scanner";
 import { Sale } from "../types";
-import { supabase } from "../lib/supabase";
 
 interface DashboardProps {
   onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;
@@ -71,67 +70,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const handleTogglePaid = async (sale: Sale) => {
-    if (!supabase) {
-      alert("Error: El cliente de Supabase no está configurado.");
-      return;
-    }
     const newPaidState = !sale.pagado;
-    const { error } = await supabase
-      .from("sales")
-      .update({
-        pagado: newPaidState,
-        pago_parcial: newPaidState ? sale.ingreso_bruto : 0
-      })
-      .eq("id", sale.id);
-
-    if (error) {
-      alert(error.message || JSON.stringify(error));
-      return;
+    const updatePayload = { 
+      ...sale, 
+      pagado: newPaidState,
+      pago_parcial: newPaidState ? sale.ingreso_bruto : 0 // If marked as paid, assume full payment. If unpaid, assume 0 for now as requested.
+    };
+    try {
+      const response = await fetch(`/api/sales/${sale.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": localStorage.getItem("glow_token") || "" 
+        },
+        body: JSON.stringify(updatePayload)
+      });
+      if (response.ok) {
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats
+      }
+    } catch (err) {
+      console.error("Error toggling paid state:", err);
     }
-
-    // Refrescar UI inmediatamente
-    await fetchSales(page, itemsPerPage);
-    await refreshData();
   };
 
   const handleUpdateDeliveryStatus = async (sale: Sale, status: string) => {
-    if (!supabase) {
-      alert("Error: El cliente de Supabase no está configurado.");
-      return;
+    try {
+      const response = await fetch(`/api/sales/${sale.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": localStorage.getItem("glow_token") || "" 
+        },
+        body: JSON.stringify({ ...sale, estado_entrega: status })
+      });
+      if (response.ok) {
+        await fetchSales(page, itemsPerPage);
+      }
+    } catch (err) {
+      console.error("Error updating delivery status:", err);
     }
-    const { error } = await supabase
-      .from("sales")
-      .update({ estado_entrega: status })
-      .eq("id", sale.id);
-
-    if (error) {
-      alert(error.message || JSON.stringify(error));
-      return;
-    }
-
-    // Refrescar UI inmediatamente
-    await fetchSales(page, itemsPerPage);
-    await refreshData();
   };
 
   const handleMarkAsInvoiced = async (sale: Sale) => {
-    if (!supabase) {
-      alert("Error: El cliente de Supabase no está configurado.");
-      return;
+    try {
+      const response = await fetch(`/api/sales/${sale.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": localStorage.getItem("glow_token") || "" 
+        },
+        body: JSON.stringify({ ...sale, estado_arca: "Facturado" })
+      });
+      if (response.ok) {
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats (arcaPending)
+      }
+    } catch (err) {
+      console.error("Error marking as invoiced:", err);
     }
-    const { error } = await supabase
-      .from("sales")
-      .update({ estado_arca: "Facturado" })
-      .eq("id", sale.id);
-
-    if (error) {
-      alert(error.message || JSON.stringify(error));
-      return;
-    }
-
-    // Refrescar UI inmediatamente
-    await fetchSales(page, itemsPerPage);
-    await refreshData();
   };
 
   const handleUpdateSale = async (e: React.FormEvent) => {
