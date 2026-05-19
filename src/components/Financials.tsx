@@ -23,7 +23,7 @@ import {
 import { Movement } from "../types";
 
 export const Financials: React.FC = () => {
-  const { movements, setMovements, refreshData, token } = useData();
+  const { movements, setMovements, refreshData, token, stats } = useData();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState<Movement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,14 +41,35 @@ export const Financials: React.FC = () => {
 
   const [formData, setFormData] = useState({
     tipo_movimiento: "Egreso" as "Ingreso" | "Egreso",
-    categoria: "Varios" as "Venta" | "Varios" | "Fijo" | "Préstamo" | "Ajuste" | "Compra_Mercaderia",
+    categoria: "Varios" as "Venta" | "Varios" | "Fijo" | "Préstamo" | "Ajuste" | "Compra de Mercadería",
     monto: "",
     moneda: "ARS" as "ARS" | "USD",
     descripcion: "",
-    fecha: new Date().toISOString().split('T')[0]
+    fecha: (() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    })()
   });
 
+  const formatDateForDisplay = (dateStr: string) => {
+    if (!dateStr) return "-";
+    // If it's a full ISO string, extract just the date part
+    const cleanDate = dateStr.split('T')[0];
+    const [year, month, day] = cleanDate.split('-');
+    if (!year || !month || !day) return dateStr;
+    return `${day}/${month}/${year}`;
+  };
+
   const balances = useMemo(() => {
+    // Prefer the server-calculated total balance if available
+    if (stats.currentBalanceARS !== undefined && stats.currentBalanceUSD !== undefined) {
+      return {
+        ARS: stats.currentBalanceARS,
+        USD: stats.currentBalanceUSD
+      };
+    }
+
+    // Fallback to client-side calculation from loaded movements
     const res = { ARS: 0, USD: 0 };
     movements.forEach(m => {
       const val = parseFloat(String(m.monto)) || 0;
@@ -62,7 +83,7 @@ export const Financials: React.FC = () => {
       }
     });
     return res;
-  }, [movements]);
+  }, [movements, stats.currentBalanceARS, stats.currentBalanceUSD]);
 
   const handleAdjustBalance = async (e?: React.SyntheticEvent) => {
     if (e) {
@@ -215,13 +236,15 @@ export const Financials: React.FC = () => {
       if (response.ok) {
         setIsAdding(false);
         setEditingMovement(null);
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         setFormData({
           tipo_movimiento: "Egreso",
           categoria: "Varios",
           monto: "",
           moneda: "ARS",
           descripcion: "",
-          fecha: new Date().toISOString().split('T')[0]
+          fecha: todayStr
         });
         await refreshData();
       }
@@ -234,13 +257,17 @@ export const Financials: React.FC = () => {
 
   const handleEditClick = (m: Movement) => {
     setEditingMovement(m);
+    
+    // Safely parse date to YYYY-MM-DD for input
+    const datePart = m.fecha ? m.fecha.split('T')[0] : "";
+    
     setFormData({
       tipo_movimiento: m.tipo_movimiento as any,
       categoria: m.categoria as any,
       monto: m.monto.toString(),
       moneda: m.moneda as any,
       descripcion: m.descripcion,
-      fecha: new Date(m.fecha).toISOString().split('T')[0]
+      fecha: datePart
     });
     setSelectedIds([]);
     setIsAdding(true);
@@ -377,8 +404,7 @@ export const Financials: React.FC = () => {
         if (filterCurrency && m.moneda !== filterCurrency) return false;
         
         if (startDate || endDate) {
-          const d = new Date(m.fecha);
-          const mDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          const mDateStr = m.fecha ? m.fecha.split('T')[0] : "";
           
           if (startDate && mDateStr < startDate) return false;
           if (endDate && mDateStr > endDate) return false;
@@ -393,7 +419,14 @@ export const Financials: React.FC = () => {
       .sort((a, b) => {
         const dateA = new Date(a.fecha).getTime();
         const dateB = new Date(b.fecha).getTime();
-        return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+        if (dateA !== dateB) {
+          return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+        }
+        
+        // Tie-breaker: use created_at for movements on the same logical date
+        const createA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const createB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return sortOrder === "asc" ? createA - createB : createB - createA;
       });
   }, [movements, filterType, filterCurrency, startDate, endDate, searchTerm, sortOrder]);
 
@@ -403,7 +436,7 @@ export const Financials: React.FC = () => {
 
   const panels = [
     { id: "Venta", label: "Ingresos por Ventas", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { id: "Compra_Mercaderia", label: "COMPRA DE MERCADERÍA", color: "text-orange-400", bg: "bg-orange-500/10" },
+    { id: "Compra de Mercadería", label: "Compra de Mercadería", color: "text-orange-400", bg: "bg-orange-500/10" },
     { id: "Varios", label: "Egresos Varios", color: "text-rose-400", bg: "bg-rose-500/10" },
     { id: "Fijo", label: "Gastos Fijos", color: "text-amber-400", bg: "bg-amber-500/10" },
     { id: "Ajuste", label: "Ajustes", color: "text-indigo-400", bg: "bg-indigo-500/10" },
@@ -663,7 +696,7 @@ export const Financials: React.FC = () => {
                       <td className="px-6 py-5">
                         <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold border ${
                           m.categoria === 'Venta' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                          m.categoria === 'Compra_Mercaderia' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                          m.categoria === 'Compra de Mercadería' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
                           m.categoria === 'Fijo' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
                           m.categoria === 'Préstamo' ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' :
                           'bg-slate-500/10 text-slate-400 border-slate-500/20'
@@ -678,7 +711,7 @@ export const Financials: React.FC = () => {
                         </p>
                       </td>
                       <td className="px-6 py-5 text-white/40 tabular-nums">
-                        {new Date(m.fecha).toLocaleDateString()}
+                        {formatDateForDisplay(m.fecha)}
                       </td>
                       <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
@@ -1013,7 +1046,7 @@ export const Financials: React.FC = () => {
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none text-sm"
                       >
                         <option value="Venta" className="bg-[#1e1e1e]">Ingreso por Venta</option>
-                        <option value="Compra_Mercaderia" className="bg-[#1e1e1e]">COMPRA DE MERCADERÍA</option>
+                        <option value="Compra de Mercadería" className="bg-[#1e1e1e]">Compra de Mercadería</option>
                         <option value="Varios" className="bg-[#1e1e1e]">Egreso Vario</option>
                         <option value="Fijo" className="bg-[#1e1e1e]">Gasto Fijo</option>
                         <option value="Préstamo" className="bg-[#1e1e1e]">Préstamo (Carlos/Yeimar)</option>

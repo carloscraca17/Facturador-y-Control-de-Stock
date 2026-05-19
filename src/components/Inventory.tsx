@@ -18,11 +18,9 @@ import { useData } from "./DataProvider";
 
 export const Inventory: React.FC = () => {
   const { products, setProducts, productsTotal, fetchProducts, refreshData, token, user } = useData();
-  const [page, setPage] = useState(1);
-  const itemsPerPage = 50;
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [sortField, setSortField] = useState<"nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual" | null>(null);
+  const [sortField, setSortField] = useState<"nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual" | "ganancia" | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -31,6 +29,7 @@ export const Inventory: React.FC = () => {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const itemsPerPage = 5000;
 
   // New/Edit Product Form State
   const [formData, setFormData] = useState({
@@ -47,14 +46,13 @@ export const Inventory: React.FC = () => {
   // UseEffect for debounced search
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      setPage(1);
       fetchProducts(1, itemsPerPage, searchTerm);
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
-  const handleSort = (field: "nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual") => {
+  const handleSort = (field: "nombre" | "categoria" | "costo_unitario" | "precio_venta" | "stock_actual" | "ganancia") => {
     if (sortField === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
@@ -73,8 +71,16 @@ export const Inventory: React.FC = () => {
     .filter(p => !activeCategory || p.categoria === activeCategory)
     .sort((a, b) => {
         if (!sortField) return 0;
-        const aVal = a[sortField];
-        const bVal = b[sortField];
+        
+        let aVal: any = a[sortField as keyof typeof a];
+        let bVal: any = b[sortField as keyof typeof b];
+
+        // Special handling for Ganancia (derived field)
+        if (sortField === "ganancia") {
+          aVal = (a.precio_venta || 0) - (a.costo_unitario || 0);
+          bVal = (b.precio_venta || 0) - (b.costo_unitario || 0);
+        }
+
         if (typeof aVal === "string" && typeof bVal === "string") {
             return sortOrder === "asc" 
                 ? aVal.localeCompare(bVal) 
@@ -381,7 +387,6 @@ export const Inventory: React.FC = () => {
       });
 
       if (response.ok) {
-        setPage(1); // Reset to page 1 to see the new product (sorted by newest)
         await fetchProducts(1, itemsPerPage, searchTerm);
         resetForm();
       } else {
@@ -393,16 +398,6 @@ export const Inventory: React.FC = () => {
       alert(`Error al guardar producto: ${err.message}`);
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const totalPages = Math.ceil(productsTotal / itemsPerPage);
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setPage(newPage);
-      fetchProducts(newPage, itemsPerPage, searchTerm);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -512,10 +507,10 @@ export const Inventory: React.FC = () => {
       {/* Product Grid/Table */}
       <div className="glass rounded-[2rem] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm min-w-[800px]">
+          <table className="w-full text-left text-sm">
             <thead className="bg-white/5 text-white/40 uppercase text-[10px] font-bold tracking-widest border-b border-white/5">
               <tr>
-                <th className="px-6 py-5 w-10">
+                <th className="px-4 py-5 w-10">
                   <input 
                     type="checkbox" 
                     className="accent-pink-600 w-4 h-4 rounded border-white/10 bg-white/5"
@@ -523,7 +518,7 @@ export const Inventory: React.FC = () => {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="px-6 py-5">
+                <th className="px-4 py-5">
                     <button 
                         onClick={() => handleSort("nombre")}
                         className="flex items-center gap-2 hover:text-white transition-colors"
@@ -532,7 +527,7 @@ export const Inventory: React.FC = () => {
                         {getSortIcon("nombre")}
                     </button>
                 </th>
-                <th className="px-6 py-5">
+                <th className="px-4 py-5">
                     <button 
                         onClick={() => handleSort("categoria")}
                         className="flex items-center gap-2 hover:text-white transition-colors"
@@ -541,7 +536,7 @@ export const Inventory: React.FC = () => {
                         {getSortIcon("categoria")}
                     </button>
                 </th>
-                <th className="px-8 py-5 text-right">
+                <th className="px-4 py-5 text-right">
                     <button 
                         onClick={() => handleSort("costo_unitario")}
                         className="flex items-center gap-2 hover:text-white transition-colors ml-auto"
@@ -550,7 +545,7 @@ export const Inventory: React.FC = () => {
                         {getSortIcon("costo_unitario")}
                     </button>
                 </th>
-                <th className="px-8 py-5 text-right">
+                <th className="px-4 py-5 text-right">
                     <button 
                         onClick={() => handleSort("precio_venta")}
                         className="flex items-center gap-2 hover:text-white transition-colors ml-auto"
@@ -559,7 +554,16 @@ export const Inventory: React.FC = () => {
                         {getSortIcon("precio_venta")}
                     </button>
                 </th>
-                <th className="px-8 py-5 text-center">
+                <th className="px-4 py-5 text-right">
+                    <button 
+                        onClick={() => handleSort("ganancia")}
+                        className="flex items-center gap-2 hover:text-white transition-colors ml-auto text-white/40"
+                    >
+                        Ganancia
+                        {getSortIcon("ganancia")}
+                    </button>
+                </th>
+                <th className="px-4 py-5 text-center">
                     <button 
                         onClick={() => handleSort("stock_actual")}
                         className="flex items-center gap-2 hover:text-white transition-colors mx-auto"
@@ -568,13 +572,13 @@ export const Inventory: React.FC = () => {
                         {getSortIcon("stock_actual")}
                     </button>
                 </th>
-                <th className="px-6 py-5 text-right">Acciones</th>
+                <th className="px-4 py-5 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-white/80">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-20 text-center">
+                  <td colSpan={8} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-4 text-white/20">
                       <Package size={48} />
                       <p className="italic serif text-lg">No se encontraron productos</p>
@@ -588,7 +592,7 @@ export const Inventory: React.FC = () => {
                   onClick={() => startEdit(p)}
                   className={`hover:bg-white/5 transition-colors group cursor-pointer ${selectedIds.includes(p.id) ? 'bg-pink-500/5 focus-within:bg-pink-500/10' : ''}`}
                 >
-                  <td className="px-6 py-5" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
                     <input 
                       type="checkbox" 
                       className="accent-pink-600 w-4 h-4 rounded border-white/10 bg-white/5 cursor-pointer"
@@ -596,31 +600,34 @@ export const Inventory: React.FC = () => {
                       onChange={() => toggleSelect(p.id)}
                     />
                   </td>
-                  <td className="px-6 py-5">
+                  <td className="px-4 py-5">
                     <div className="font-semibold text-white group-hover:text-pink-400 transition-colors">{p.nombre}</div>
                     <div className="text-[10px] text-white/30 font-mono tracking-wider mb-1">{p.sku_barcode}</div>
                     {p.detalles && (
-                        <div className="text-[10px] text-pink-400/60 italic max-w-xs truncate">{p.detalles}</div>
+                        <div className="text-[10px] text-pink-400/60 italic">{p.detalles}</div>
                     )}
                   </td>
-                  <td className="px-6 py-5">
-                    <span className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-white/10">
+                  <td className="px-4 py-5">
+                    <span className="px-2 py-0.5 bg-white/5 rounded-full text-[9px] font-bold uppercase tracking-wider border border-white/10 whitespace-nowrap">
                         {(p as any).categoria || 'General'}
                     </span>
                   </td>
-                  <td className="px-6 py-5 text-right text-white/50">${p.costo_unitario.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-right font-bold text-white">${p.precio_venta.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-center">
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border ${
+                  <td className="px-4 py-5 text-right text-white/50 tabular-nums whitespace-nowrap">${p.costo_unitario.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-5 text-right font-bold text-white tabular-nums whitespace-nowrap">${p.precio_venta.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-5 text-right text-emerald-400 font-mono whitespace-nowrap tabular-nums">
+                    ${(p.precio_venta - p.costo_unitario).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                         p.stock_actual <= p.stock_minimo 
                             ? "bg-rose-500/10 text-rose-400 border-rose-500/20" 
                             : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                     }`}>
                         {p.stock_actual}
-                        <span className="opacity-40 text-[10px]">/ {p.stock_minimo}</span>
+                        <span className="opacity-40 text-[9px]">/ {p.stock_minimo}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-2">
                         <button 
                             onClick={() => startEdit(p)}
@@ -647,52 +654,6 @@ export const Inventory: React.FC = () => {
           </table>
         </div>
       </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-8">
-          <button 
-            onClick={() => handlePageChange(page - 1)}
-            disabled={page === 1}
-            className="p-3 bg-white/5 border border-white/10 rounded-xl text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          
-          <div className="flex items-center gap-2">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum = page;
-              if (page <= 3) pageNum = i + 1;
-              else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
-              else pageNum = page - 2 + i;
-              
-              if (pageNum < 1 || pageNum > totalPages) return null;
-
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => handlePageChange(pageNum)}
-                  className={`w-10 h-10 rounded-xl text-xs font-bold transition-all ${
-                    page === pageNum 
-                      ? "bg-pink-500 text-white shadow-lg shadow-pink-500/20" 
-                      : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
-          </div>
-
-          <button 
-            onClick={() => handlePageChange(page + 1)}
-            disabled={page === totalPages}
-            className="p-3 bg-white/5 border border-white/10 rounded-xl text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-      )}
 
       {/* Bulk Action Bar */}
       <AnimatePresence>
@@ -793,12 +754,9 @@ export const Inventory: React.FC = () => {
                         onChange={(e) => setFormData({...formData, categoria: e.target.value})}
                         className="w-full bg-[#1e1e1e] border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"
                     >
-                        <option value="SKINCARE Y PERFUMERÍA" className="bg-[#1e1e1e] text-white">SKINCARE Y PERFUMERÍA</option>
-                        <option value="MAQUILLAJE Y COSMÉTICA" className="bg-[#1e1e1e] text-white">MAQUILLAJE Y COSMÉTICA</option>
-                        <option value="ELECTRÓNICOS" className="bg-[#1e1e1e] text-white">ELECTRÓNICOS</option>
-                        <option value="INDUMENTARIA" className="bg-[#1e1e1e] text-white">INDUMENTARIA</option>
-                        <option value="CALZADO" className="bg-[#1e1e1e] text-white">CALZADO</option>
-                        <option value="ACCESORIOS" className="bg-[#1e1e1e] text-white">ACCESORIOS</option>
+                        {categories.map(cat => (
+                            <option key={cat} value={cat} className="bg-[#1e1e1e] text-white">{cat}</option>
+                        ))}
                     </select>
                 </div>
                 <div className="space-y-2">
@@ -806,6 +764,7 @@ export const Inventory: React.FC = () => {
                     <input 
                         type="number" 
                         required
+                        step="0.01"
                         value={formData.costo_unitario}
                         onChange={(e) => setFormData({...formData, costo_unitario: Number(e.target.value)})}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"
@@ -816,6 +775,7 @@ export const Inventory: React.FC = () => {
                     <input 
                         type="number" 
                         required
+                        step="0.01"
                         value={formData.precio_venta}
                         onChange={(e) => setFormData({...formData, precio_venta: Number(e.target.value)})}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"

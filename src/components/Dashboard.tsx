@@ -112,6 +112,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
+  const handleMarkAsInvoiced = async (sale: Sale) => {
+    try {
+      const response = await fetch(`/api/sales/${sale.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": localStorage.getItem("glow_token") || "" 
+        },
+        body: JSON.stringify({ ...sale, estado_arca: "Facturado" })
+      });
+      if (response.ok) {
+        await fetchSales(page, itemsPerPage);
+        await refreshData(); // To update stats (arcaPending)
+      }
+    } catch (err) {
+      console.error("Error marking as invoiced:", err);
+    }
+  };
+
   const handleUpdateSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSale) return;
@@ -136,8 +155,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   };
 
   const MONTHLY_GOAL = 1000000;
-  // Use totalGrossSales (includes paid and unpaid) for the goal calculation as requested
-  const monthlyGrossTotal = stats.totalGrossSales;
+  // Use monthlyGrossSales (current month only) for the goal calculation
+  const monthlyGrossTotal = stats.monthlyGrossSales || 0;
   const goalProgress = Math.min((monthlyGrossTotal / MONTHLY_GOAL) * 100, 100);
 
   // Sorting and Filtering Logic
@@ -365,31 +384,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     }
   };
 
-  const unpaidTotalCalculated = sales.reduce((acc, s) => {
-    if (s.pagado) return acc;
-    return acc + (Math.max(0, (s.ingreso_bruto || 0) - (Number(s.pago_parcial) || 0)));
-  }, 0);
-
   const isDisconnected = !!connectionError;
   const isEmptyAndConnected = products.length === 0 && sales.length === 0 && !loading && !connectionError;
 
   const metrics = [
     { 
-      label: "Venta Total", 
+      label: "Venta Bruta Total", 
       value: `$${stats.totalGrossSales.toLocaleString()}`, 
       icon: ShoppingBag, 
       color: "text-blue-400",
       accent: "bg-blue-500/20"
     },
     { 
-      label: "Total Cobrado", 
-      value: `$${stats.totalCollected.toLocaleString()}`, 
+      label: "Saldo Disponible ARS", 
+      value: `$${(stats.currentBalanceARS || 0).toLocaleString()}`, 
       icon: TrendingUp, 
       color: "text-emerald-400",
       accent: "bg-emerald-500/20"
     },
     { 
-      label: "GANANCIA TOTAL", 
+      label: "Saldo Disponible USD", 
+      value: `U$D ${(stats.currentBalanceUSD || 0).toLocaleString()}`, 
+      icon: DollarSign, 
+      color: "text-blue-400",
+      accent: "bg-blue-500/20"
+    },
+    { 
+      label: "GANANCIA TOTAL (Est.)", 
       value: `$${stats.realProfit.toLocaleString()}`, 
       icon: DollarSign, 
       color: "text-pink-400",
@@ -397,7 +418,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     },
     { 
       label: "Saldo por Cobrar", 
-      value: `$${unpaidTotalCalculated.toLocaleString()}`, 
+      value: `$${stats.unpaidTotal.toLocaleString()}`, 
       icon: Clock, 
       color: "text-amber-400",
       accent: "bg-amber-500/20"
@@ -554,7 +575,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
           <div>
             <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Meta Mensual</p>
             <div className="flex justify-between text-[11px] mb-2 font-bold">
-              <span className="text-white">${monthlyGrossTotal.toLocaleString()}</span>
+              <span className="text-white">${monthlyGrossTotal.toLocaleString()} / ${MONTHLY_GOAL.toLocaleString()}</span>
               <span className="text-pink-400">{goalProgress.toFixed(1)}%</span>
             </div>
             <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-3">
@@ -844,6 +865,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] uppercase font-bold border ${sale.estado_arca === 'Facturado' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
                                 {sale.estado_arca}
                             </span>
+                            {sale.estado_arca === 'Pendiente' && (
+                              <button 
+                                onClick={() => handleMarkAsInvoiced(sale)}
+                                className="px-1.5 py-0.5 bg-indigo-500 text-white rounded text-[8px] font-bold hover:bg-indigo-400 transition-colors shadow-sm"
+                              >
+                                FACTURAR
+                              </button>
+                            )}
                           </div>
                           
                           <div className="flex items-center gap-1.5">

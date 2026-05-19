@@ -41,13 +41,14 @@ export interface Sale {
 export interface Movement {
   id: string;
   tipo_movimiento: "Ingreso" | "Egreso";
-  categoria: "Venta" | "Varios" | "Fijo" | "Ajuste" | "Préstamo" | "Compra_Mercaderia";
+  categoria: "Venta" | "Varios" | "Fijo" | "Ajuste" | "Préstamo" | "Compra de Mercadería";
   monto: number;
   moneda: "ARS" | "USD";
   descripcion: string;
   fecha: any;
   sale_id?: string;
   userId: string;
+  created_at?: string;
 }
 
 export interface Expense {
@@ -73,6 +74,9 @@ export interface BusinessStats {
   totalRevenue: number;
   totalGrossSales: number;
   totalCollected: number;
+  currentBalanceARS?: number;
+  currentBalanceUSD?: number;
+  monthlyGrossSales: number;
   realProfit: number;
   stockAlerts: number;
   arcaPending: number;

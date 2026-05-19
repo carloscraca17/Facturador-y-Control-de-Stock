@@ -49,6 +49,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     totalRevenue: 0,
     totalGrossSales: 0,
     totalCollected: 0,
+    monthlyGrossSales: 0,
     realProfit: 0,
     stockAlerts: 0,
     arcaPending: 0,
@@ -75,7 +76,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const fetchProducts = async (page = 1, limit = 50, search = "") => {
+  const fetchProducts = async (page = 1, limit = 5000, search = "") => {
     if (!token) return;
     try {
       const url = `/api/products?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ""}`;
@@ -129,7 +130,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const headers = { "Authorization": token };
       const [statsRes, prodsRes, salesRes, expRes, movRes] = await Promise.all([
         fetch("/api/stats", { headers, signal: controller.signal }),
-        fetch("/api/products?page=1&limit=50", { headers, signal: controller.signal }),
+        fetch("/api/products?page=1&limit=5000", { headers, signal: controller.signal }),
         fetch("/api/sales?page=1&limit=20", { headers, signal: controller.signal }),
         fetch("/api/expenses", { headers, signal: controller.signal }),
         fetch("/api/movements", { headers, signal: controller.signal })

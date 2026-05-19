@@ -419,7 +419,8 @@ app.post("/api/sales", authenticate, async (req, res) => {
         moneda: data.moneda || "ARS",
         descripcion: `Ingreso de Venta - ${clienteDesc} - ${productName}${detalleDesc}`,
         sale_id: data.id,
-        fecha: new Date()
+        fecha: new Date(),
+        userId: "admin"
       }]);
       if (moveError) console.error("[MOVE_POST] Error:", moveError);
     }
@@ -499,7 +500,8 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
         moneda: updatedSale.moneda || "ARS",
         descripcion: `${diff > 0 ? "Cobro" : "Reverso"} de Venta - ${clienteDesc} - ${productName}${detalleDesc}`,
         sale_id: updatedSale.id,
-        fecha: new Date()
+        fecha: new Date(),
+        userId: "admin"
       }]);
       if (syncError) console.error("[MOVE_SYNC] Error:", syncError);
     }
@@ -520,6 +522,11 @@ app.post("/api/bulk-delete/:table", authenticate, async (req, res) => {
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: "No IDs provided" });
+    }
+
+    // Special clean up for sales
+    if (table === "sales") {
+      await supabase.from("movements").delete().in("sale_id", ids);
     }
 
     const { error, count } = await supabase
@@ -586,6 +593,9 @@ app.delete("/api/sales/:id", authenticate, async (req, res) => {
         }
     }
 
+    // Clean up associated movements
+    await supabase.from("movements").delete().eq("sale_id", req.params.id);
+
     const { error: deleteError } = await supabase.from("sales").delete().eq("id", req.params.id);
     if (deleteError) throw deleteError;
     
@@ -614,8 +624,21 @@ app.get("/api/expenses", authenticate, async (req, res) => {
 app.post("/api/expenses", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase.from("expenses").insert([req.body]).select().single();
+    const exp = req.body;
+    const { data, error } = await supabase.from("expenses").insert([exp]).select().single();
     if (error) throw error;
+
+    // Create movement for expense
+    await supabase.from("movements").insert([{
+      tipo_movimiento: "Egreso",
+      categoria: "Varios",
+      monto: Number(exp.monto) || 0,
+      moneda: "ARS", // Assuming ARS for legacy expenses, or use exp.moneda if context exists
+      descripcion: `Gasto: ${exp.descripcion}`,
+      fecha: exp.fecha_gasto || new Date(),
+      userId: exp.userId || "admin"
+    }]);
+
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -626,49 +649,68 @@ app.post("/api/expenses", authenticate, async (req, res) => {
 app.get("/api/stats", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const [salesRes, productsRes, expensesRes, movementsRes] = await Promise.all([
-      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca, canal_venta"),
+    const [salesRes, productsRes, movementsRes] = await Promise.all([
+      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca, canal_venta, moneda, fecha_venta"),
       supabase.from("products").select("stock_actual, stock_minimo"),
-      supabase.from("expenses").select("monto"),
-      supabase.from("movements").select("monto, tipo_movimiento, categoria, moneda")
+      supabase.from("movements").select("monto, tipo_movimiento, moneda")
     ]);
 
     const sales = salesRes.data || [];
     const products = productsRes.data || [];
-    const expenses = expensesRes.data || [];
     const movements = movementsRes.data || [];
 
-    // Revenue should be based on movements of category "Venta" for ARS (main currency)
-    const totalRevenue = movements
-      .filter(m => m.categoria === "Venta" && m.moneda === "ARS")
-      .reduce((acc, m) => m.tipo_movimiento === "Ingreso" ? acc + (Number(m.monto) || 0) : acc - (Number(m.monto) || 0), 0);
+    // Filter ARS sales for main currency totals
+    const arsSales = sales.filter(s => (s.moneda || "ARS") === "ARS");
+
+    // Monthly Gross Sales calculation
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthlyGrossSales = arsSales
+      .filter(s => {
+        const d = new Date(s.fecha_venta);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      })
+      .reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+
+    // Total Gross Sales (ARS only)
+    const totalGrossSales = arsSales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
     
-    const totalGrossSales = sales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+    // Total Collected (ARS only)
+    const totalCollected = arsSales.reduce((acc, s) => 
+      s.pagado ? 
+      acc + (Number(s.ingreso_bruto) || 0) : 
+      acc + (Number(s.pago_parcial) || 0), 0);
+
+    // Calculate ACTUAL balance from ALL movements in DB
+    const currentBalanceARS = movements
+      .filter(m => (m.moneda || "ARS") === "ARS")
+      .reduce((acc, m) => m.tipo_movimiento === "Ingreso" ? acc + Number(m.monto) : acc - Number(m.monto), 0);
     
+    const currentBalanceUSD = movements
+      .filter(m => m.moneda === "USD")
+      .reduce((acc, m) => m.tipo_movimiento === "Ingreso" ? acc + Number(m.monto) : acc - Number(m.monto), 0);
+
+    // Unpaid Total (ARS only)
+    const unpaidTotal = arsSales.reduce((acc, s) => 
+      s.pagado ? 
+      acc : 
+      acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0))), 0);
+
     const salesByChannel = {
-      Local: sales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
-      Web: sales.filter(s => s.canal_venta === "Web").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
-      MercadoLibre: sales.filter(s => s.canal_venta === "MercadoLibre").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0)
+      Local: arsSales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
+      Web: arsSales.filter(s => s.canal_venta === "Web").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
+      MercadoLibre: arsSales.filter(s => s.canal_venta === "MercadoLibre").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0)
     };
-    
-    const totalExpenses = movements
-      .filter(m => m.tipo_movimiento === "Egreso" && m.moneda === "ARS")
-      .reduce((acc, m) => acc + (Number(m.monto) || 0), 0);
-    
-    const totalIncome = movements
-      .filter(m => m.tipo_movimiento === "Ingreso" && m.moneda === "ARS")
-      .reduce((acc, m) => acc + (Number(m.monto) || 0), 0);
 
-    const realProfit = sales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);
-
-    const unpaidTotal = sales.reduce((acc, s) => s.pagado ? acc : acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0))), 0);
-
-    const totalCollected = totalRevenue;
+    const realProfit = arsSales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);
 
     res.json({
-      totalRevenue,
       totalGrossSales,
       totalCollected,
+      currentBalanceARS,
+      currentBalanceUSD,
+      monthlyGrossSales,
       salesByChannel,
       realProfit,
       stockAlerts: products.filter(p => Number(p.stock_actual) <= Number(p.stock_minimo)).length,
@@ -686,9 +728,47 @@ app.get("/api/stats", authenticate, async (req, res) => {
 app.get("/api/movements", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase.from("movements").select("*").order("fecha", { ascending: false }).limit(300);
+    const { data, error } = await supabase
+      .from("movements")
+      .select("*")
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(300);
     if (error) throw error;
     res.json(data || []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/movements", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { data, error } = await supabase.from("movements").insert([req.body]).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/movements/:id", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { data, error } = await supabase.from("movements").update(req.body).eq("id", req.params.id).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/movements/:id", authenticate, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: "DB not available" });
+    const { error } = await supabase.from("movements").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
