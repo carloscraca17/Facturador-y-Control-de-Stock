@@ -345,13 +345,13 @@ app.get("/api/users", authenticate, async (req, res) => {
 app.post("/api/users", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase
+    const { data: insertedUsers, error } = await supabase
       .from("app_users")
       .insert([req.body])
-      .select()
-      .single();
+      .select();
     
     if (error) throw error;
+    const data = (insertedUsers && insertedUsers.length > 0) ? insertedUsers[0] : { id: null, ...req.body };
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -361,14 +361,14 @@ app.post("/api/users", authenticate, async (req, res) => {
 app.put("/api/users/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase
+    const { data: updatedUsers, error } = await supabase
       .from("app_users")
       .update(req.body)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     
     if (error) throw error;
+    const data = (updatedUsers && updatedUsers.length > 0) ? updatedUsers[0] : { id: req.params.id, ...req.body };
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -437,13 +437,13 @@ app.post("/api/products", authenticate, async (req, res) => {
       updated_at: new Date()
     };
 
-    const { data, error } = await supabase
+    const { data: upsertedProducts, error } = await supabase
       .from("products")
       .upsert([product], { onConflict: 'sku_barcode' })
-      .select()
-      .single();
+      .select();
 
     if (error) throw error;
+    const data = (upsertedProducts && upsertedProducts.length > 0) ? upsertedProducts[0] : { id: null, ...product };
     res.json(data);
   } catch (error: any) {
     console.error("[PRODUCTS] POST Error:", error);
@@ -648,18 +648,21 @@ app.post("/api/sales", authenticate, async (req, res) => {
       fecha_venta: s.fecha_venta || new Date()
     };
 
-    const { data, error } = await supabase.from("sales").insert([sale]).select().single();
+    const { data: insertedSales, error } = await supabase.from("sales").insert([sale]).select();
     if (error) throw error;
+    const data = (insertedSales && insertedSales.length > 0) ? insertedSales[0] : null;
+    if (!data) throw new Error("No se pudo crear la venta");
 
     // Automaticaly register/update customer
     if (sale.cliente_nombre) {
       try {
-        const { data: existingCust } = await supabase
+        const { data: existingCusts } = await supabase
           .from("customers")
           .select("id")
           .eq("nombre", sale.cliente_nombre)
-          .eq("apellido", sale.cliente_apellido || "")
-          .maybeSingle();
+          .eq("apellido", sale.cliente_apellido || "");
+
+        const existingCust = (existingCusts && existingCusts.length > 0) ? existingCusts[0] : null;
 
         if (!existingCust) {
           await supabase.from("customers").insert([{
@@ -676,7 +679,8 @@ app.post("/api/sales", authenticate, async (req, res) => {
 
     // Decrement stock
     if (data.product_id) {
-      const { data: prod } = await supabase.from("products").select("stock_actual").eq("id", data.product_id).single();
+      const { data: prods } = await supabase.from("products").select("stock_actual").eq("id", data.product_id);
+      const prod = (prods && prods.length > 0) ? prods[0] : null;
       if (prod) {
         await supabase.from("products")
           .update({ stock_actual: Math.max(0, (Number(prod.stock_actual) || 0) - 1) })
@@ -687,7 +691,8 @@ app.post("/api/sales", authenticate, async (req, res) => {
     // Fetch product name for better description
     let productName = "Venta";
     if (data.product_id) {
-      const { data: prod } = await supabase.from("products").select("nombre").eq("id", data.product_id).single();
+      const { data: prods } = await supabase.from("products").select("nombre").eq("id", data.product_id);
+      const prod = (prods && prods.length > 0) ? prods[0] : null;
       if (prod) productName = prod.nombre;
     }
 
@@ -974,17 +979,18 @@ app.delete("/api/sales/:id", authenticate, async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     
     // Fetch sale first to find the product_id and restore stock
-    const { data: sale, error: fetchError } = await supabase
+    const { data: sales, error: fetchError } = await supabase
       .from("sales")
       .select("product_id")
-      .eq("id", req.params.id)
-      .single();
+      .eq("id", req.params.id);
 
     if (fetchError) throw fetchError;
+    const sale = (sales && sales.length > 0) ? sales[0] : null;
 
     if (sale && sale.product_id) {
         // Increment stock
-        const { data: prod } = await supabase.from("products").select("stock_actual").eq("id", sale.product_id).single();
+        const { data: prods } = await supabase.from("products").select("stock_actual").eq("id", sale.product_id);
+        const prod = (prods && prods.length > 0) ? prods[0] : null;
         if (prod) {
             await supabase
                 .from("products")
@@ -1025,8 +1031,9 @@ app.post("/api/expenses", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     const exp = req.body;
-    const { data, error } = await supabase.from("expenses").insert([exp]).select().single();
+    const { data: insertedExpenses, error } = await supabase.from("expenses").insert([exp]).select();
     if (error) throw error;
+    const data = (insertedExpenses && insertedExpenses.length > 0) ? insertedExpenses[0] : { id: null, ...exp };
 
     // Create movement for expense
     await supabase.from("movements").insert([{
@@ -1144,8 +1151,9 @@ app.get("/api/movements", authenticate, async (req, res) => {
 app.post("/api/movements", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase.from("movements").insert([req.body]).select().single();
+    const { data: insertedMovements, error } = await supabase.from("movements").insert([req.body]).select();
     if (error) throw error;
+    const data = (insertedMovements && insertedMovements.length > 0) ? insertedMovements[0] : { id: null, ...req.body };
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1155,8 +1163,9 @@ app.post("/api/movements", authenticate, async (req, res) => {
 app.put("/api/movements/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase.from("movements").update(req.body).eq("id", req.params.id).select().single();
+    const { data: updatedMovements, error } = await supabase.from("movements").update(req.body).eq("id", req.params.id).select();
     if (error) throw error;
+    const data = (updatedMovements && updatedMovements.length > 0) ? updatedMovements[0] : { id: req.params.id, ...req.body };
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1312,7 +1321,7 @@ app.post("/api/customers", authenticate, async (req, res) => {
       }
     }
 
-    const { data, error } = await supabase.from("customers").insert([customerData]).select().single();
+    const { data: insertedCustomers, error } = await supabase.from("customers").insert([customerData]).select();
     
     if (error) {
       console.error("[CUST_POST] Full Error Object:", JSON.stringify(error, null, 2));
@@ -1331,6 +1340,7 @@ app.post("/api/customers", authenticate, async (req, res) => {
       }
       throw error;
     }
+    const data = (insertedCustomers && insertedCustomers.length > 0) ? insertedCustomers[0] : null;
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1425,7 +1435,7 @@ app.put("/api/customers/:id", authenticate, async (req, res) => {
       }
     }
 
-    const { data, error } = await supabase.from("customers").update(updateData).eq("id", req.params.id).select().single();
+    const { data: updatedCustomers, error } = await supabase.from("customers").update(updateData).eq("id", req.params.id).select();
     if (error) {
       console.error("[CUST_PUT] Full Error Object:", JSON.stringify(error, null, 2));
       if (error.code === '23503') {
@@ -1433,6 +1443,7 @@ app.put("/api/customers/:id", authenticate, async (req, res) => {
       }
       throw error;
     }
+    const data = (updatedCustomers && updatedCustomers.length > 0) ? updatedCustomers[0] : { id: req.params.id, ...updateData };
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
