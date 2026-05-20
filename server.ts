@@ -454,14 +454,31 @@ app.post("/api/products", authenticate, async (req, res) => {
 app.put("/api/products/:id", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
-    const { data, error } = await supabase
+    
+    const p = req.body;
+    const updateData: any = {};
+    if (p.nombre !== undefined) updateData.nombre = p.nombre;
+    if (p.sku_barcode !== undefined) updateData.sku_barcode = p.sku_barcode;
+    if (p.categoria !== undefined) updateData.categoria = p.categoria;
+    if (p.costo_unitario !== undefined) updateData.costo_unitario = Number(p.costo_unitario) || 0;
+    if (p.precio_venta !== undefined) updateData.precio_venta = Number(p.precio_venta) || 0;
+    if (p.stock_actual !== undefined) updateData.stock_actual = Number(p.stock_actual) || 0;
+    if (p.stock_minimo !== undefined) updateData.stock_minimo = Number(p.stock_minimo) || 0;
+    if (p.detalles !== undefined) updateData.detalles = p.detalles;
+    if (p.userId !== undefined) updateData.userId = p.userId || "admin";
+    updateData.updated_at = new Date();
+
+    const { data: updatedProducts, error } = await supabase
       .from("products")
-      .update({ ...req.body, updated_at: new Date() })
+      .update(updateData)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
 
     if (error) throw error;
+
+    const data = (updatedProducts && updatedProducts.length > 0)
+      ? updatedProducts[0]
+      : { id: req.params.id, ...updateData };
 
     // Implementation of user request: update sales when product price or cost changes
     if (req.body.precio_venta !== undefined || req.body.costo_unitario !== undefined) {
@@ -496,6 +513,7 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
 
     res.json(data);
   } catch (error: any) {
+    console.error("[PRODUCTS] PUT Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -704,11 +722,12 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     
     // 1. Get original sale to compare payment state
-    const { data: oldSale, error: fetchError } = await supabase
+    const { data: oldSales, error: fetchError } = await supabase
       .from("sales")
       .select("*")
-      .eq("id", req.params.id)
-      .single();
+      .eq("id", req.params.id);
+    
+    const oldSale = (oldSales && oldSales.length > 0) ? oldSales[0] : null;
     
     if (fetchError || !oldSale) {
       return res.status(404).json({ error: "Venta no encontrada" });
@@ -720,8 +739,10 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     const pid = s.product_id || oldSale.product_id;
     let productCost = 0;
     if (pid) {
-      const { data: prod } = await supabase.from("products").select("costo_unitario").eq("id", pid).single();
-      if (prod) productCost = Number(prod.costo_unitario) || 0;
+      const { data: prods } = await supabase.from("products").select("costo_unitario").eq("id", pid);
+      if (prods && prods.length > 0) {
+        productCost = Number(prods[0].costo_unitario) || 0;
+      }
     }
 
     const bruto = s.ingreso_bruto !== undefined ? (Number(s.ingreso_bruto) || 0) : oldSale.ingreso_bruto;
@@ -754,22 +775,24 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     // Direct auto-sync of active user in app_users to verify compatibility with foreign key constraint
     if (supabase && user && user.id) {
       try {
-        const { data: matchedAppUser } = await supabase
+        const { data: matchedAppUsers } = await supabase
           .from("app_users")
           .select("id")
-          .eq("id", user.id)
-          .maybeSingle();
+          .eq("id", user.id);
+
+        const matchedAppUser = (matchedAppUsers && matchedAppUsers.length > 0) ? matchedAppUsers[0] : null;
 
         if (!matchedAppUser) {
           console.log(`[SALES_PUT] Synchronizing new or active user "${user.id}" in app_users table`);
           const userMail = user.email || "";
           const metadataUsername = user.user_metadata?.username || userMail.split("@")[0] || "manager";
           
-          const { data: userByUsername } = await supabase
+          const { data: userByUsernames } = await supabase
             .from("app_users")
             .select()
-            .eq("username", metadataUsername)
-            .maybeSingle();
+            .eq("username", metadataUsername);
+
+          const userByUsername = (userByUsernames && userByUsernames.length > 0) ? userByUsernames[0] : null;
 
           if (userByUsername) {
             await supabase
@@ -796,34 +819,49 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       }
     }
 
-    const updateData = {
-      ...s,
-      userId: activeUserId,
-      ingreso_bruto: bruto,
-      ingreso_neto: (bruto - desc) - productCost,
-      descuento: desc,
-      pago_parcial: s.pago_parcial !== undefined ? (Number(s.pago_parcial) || 0) : oldSale.pago_parcial,
-    };
+    const updateData: any = {};
+    if (s.canal_venta !== undefined) updateData.canal_venta = s.canal_venta;
+    if (s.product_id !== undefined) updateData.product_id = s.product_id;
+    updateData.ingreso_bruto = bruto;
+    if (s.comision_plataforma !== undefined) updateData.comision_plataforma = Number(s.comision_plataforma) || 0;
+    if (s.costo_envio !== undefined) updateData.costo_envio = Number(s.costo_envio) || 0;
+    updateData.ingreso_neto = (bruto - desc) - productCost;
+    updateData.descuento = desc;
+    if (s.cliente_nombre !== undefined) updateData.cliente_nombre = s.cliente_nombre;
+    if (s.cliente_apellido !== undefined) updateData.cliente_apellido = s.cliente_apellido;
+    if (s.pagado !== undefined) updateData.pagado = !!s.pagado;
+    if (s.estado_arca !== undefined) updateData.estado_arca = s.estado_arca;
+    if (s.cae_arca !== undefined) updateData.cae_arca = s.cae_arca;
+    updateData.userId = activeUserId;
+    if (s.fecha_venta !== undefined) updateData.fecha_venta = s.fecha_venta;
+    if (s.moneda !== undefined) updateData.moneda = s.moneda;
+    updateData.pago_parcial = s.pago_parcial !== undefined ? (Number(s.pago_parcial) || 0) : oldSale.pago_parcial;
+    if (s.detalles_venta !== undefined) updateData.detalles_venta = s.detalles_venta;
+    if (s.estado_entrega !== undefined) updateData.estado_entrega = s.estado_entrega;
 
     // 2. Perform the update
-    const { data: updatedSale, error: updateError } = await supabase
+    const { data: updatedSales, error: updateError } = await supabase
       .from("sales")
       .update(updateData)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
 
     if (updateError) throw updateError;
+
+    const updatedSale = (updatedSales && updatedSales.length > 0)
+      ? updatedSales[0]
+      : { id: req.params.id, ...updateData };
 
     // Automaticaly register/update customer on update as well
     if (updatedSale.cliente_nombre) {
       try {
-        const { data: existingCust } = await supabase
+        const { data: existingCusts } = await supabase
           .from("customers")
           .select("id")
           .eq("nombre", updatedSale.cliente_nombre)
-          .eq("apellido", updatedSale.cliente_apellido || "")
-          .maybeSingle();
+          .eq("apellido", updatedSale.cliente_apellido || "");
+        
+        const existingCust = (existingCusts && existingCusts.length > 0) ? existingCusts[0] : null;
 
         if (!existingCust) {
           await supabase.from("customers").insert([{
@@ -847,8 +885,10 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       // Fetch product name for description
       let productName = "Venta";
       if (updatedSale.product_id) {
-        const { data: prod } = await supabase.from("products").select("nombre").eq("id", updatedSale.product_id).single();
-        if (prod) productName = prod.nombre;
+        const { data: prods } = await supabase.from("products").select("nombre").eq("id", updatedSale.product_id);
+        if (prods && prods.length > 0) {
+          productName = prods[0].nombre;
+        }
       }
       const clienteDesc = `${updatedSale.cliente_nombre || ""} ${updatedSale.cliente_apellido || ""}`.trim() || "Consumidor Final";
       const detalleDesc = updatedSale.detalles_venta ? ` (${updatedSale.detalles_venta})` : "";
