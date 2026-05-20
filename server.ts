@@ -724,8 +724,8 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       if (prod) productCost = Number(prod.costo_unitario) || 0;
     }
 
-    const bruto = Number(s.ingreso_bruto) !== undefined ? Number(s.ingreso_bruto) : oldSale.ingreso_bruto;
-    const desc = Number(s.descuento) !== undefined ? Number(s.descuento) : oldSale.descuento;
+    const bruto = s.ingreso_bruto !== undefined ? (Number(s.ingreso_bruto) || 0) : oldSale.ingreso_bruto;
+    const desc = s.descuento !== undefined ? (Number(s.descuento) || 0) : oldSale.descuento;
 
     // Dynamic user retrieval to avoid violating FK constraints on customers table
     const cleanToken = getSessionToken(req);
@@ -802,7 +802,7 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
       ingreso_bruto: bruto,
       ingreso_neto: (bruto - desc) - productCost,
       descuento: desc,
-      pago_parcial: Number(s.pago_parcial) !== undefined ? Number(s.pago_parcial) : oldSale.pago_parcial,
+      pago_parcial: s.pago_parcial !== undefined ? (Number(s.pago_parcial) || 0) : oldSale.pago_parcial,
     };
 
     // 2. Perform the update
