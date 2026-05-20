@@ -269,13 +269,14 @@ export const Customers: React.FC = () => {
                     <th className="px-6 py-5">Cliente</th>
                     <th className="px-6 py-5 text-right">Compras</th>
                     <th className="px-6 py-5 text-right">Deuda</th>
+                    <th className="px-6 py-5 text-center">Canal Habitual</th>
                     <th className="px-6 py-5 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 text-white/80">
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-6 py-20 text-center text-white/20">
+                      <td colSpan={5} className="px-6 py-20 text-center text-white/20">
                         No se encontraron clientes
                       </td>
                     </tr>
@@ -302,6 +303,22 @@ export const Customers: React.FC = () => {
                           <div className={`font-bold ${(c.debt || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                             {formatCurrency(c.debt || 0)}
                           </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          {(() => {
+                            const canalUpper = (c.canal || "LOCAL").toUpperCase();
+                            const badgeClasses = 
+                              canalUpper === "MERCADOLIBRE" 
+                                ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" 
+                                : canalUpper === "WEB" 
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                                : "bg-blue-500/10 text-blue-400 border-blue-500/20";
+                            return (
+                              <span className={`inline-block text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded border ${badgeClasses}`}>
+                                {c.canal || "LOCAL"}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-2 px-6">
