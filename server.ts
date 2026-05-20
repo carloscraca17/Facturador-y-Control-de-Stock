@@ -38,6 +38,15 @@ const AUTH_TOKEN = "glow-manager-session-true";
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Content Security Policy header setup
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; font-src * data:; img-src * data: blob:; connect-src * wss: ws:;"
+  );
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 
