@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
+import { apiFetch as fetch } from "../lib/api";
 
 export const Inventory: React.FC = () => {
   const { products, setProducts, productsTotal, fetchProducts, refreshData, token, user } = useData();

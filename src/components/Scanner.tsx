@@ -3,6 +3,7 @@ import BarcodeScannerComponent from "react-qr-barcode-scanner";
 import { motion } from "motion/react";
 import { X, Package, Search, Loader2, Keyboard, Camera, Check } from "lucide-react";
 import { useData } from "./DataProvider";
+import { apiFetch as fetch } from "../lib/api";
 
 interface ScannerProps {
   onClose: () => void;

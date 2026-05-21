@@ -20,6 +20,7 @@ import {
 import { useData } from "./DataProvider";
 import { Customer, Sale } from "../types";
 import { motion, AnimatePresence } from "motion/react";
+import { apiFetch as fetch } from "../lib/api";
 
 export const Customers: React.FC = () => {
   const { customers, setCustomers, refreshData, token, user } = useData();
