@@ -434,7 +434,21 @@ export const Customers: React.FC = () => {
                           <div className="flex justify-between items-start">
                             <div>
                               <div className="text-sm font-bold text-white mb-0.5">
-                                {sale.product_info?.nombre || sale.detalles_venta || "Venta de Producto"}
+                                {(() => {
+                                  const baseName = sale.product_info?.nombre || "Venta de Producto";
+                                  const details = sale.detalles_venta || "";
+                                  if (details.trim().startsWith("{") && details.trim().endsWith("}")) {
+                                    try {
+                                      const parsed = JSON.parse(details);
+                                      const varInfo = parsed.variant_desc ? ` - Variante: ${parsed.variant_desc}` : parsed.variant_sku ? ` - SKU: ${parsed.variant_sku}` : "";
+                                      const notesPart = parsed.notes ? ` (${parsed.notes})` : "";
+                                      return `${baseName}${varInfo}${notesPart}`;
+                                    } catch (e) {
+                                      // ignore
+                                    }
+                                  }
+                                  return details ? `${baseName} (${details})` : baseName;
+                                })()}
                               </div>
                               <div className="text-[10px] text-white/30 font-mono tracking-wider">
                                 {new Date(sale.fecha_venta).toLocaleDateString()}

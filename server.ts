@@ -53,12 +53,14 @@ app.use(express.json());
 // Auth Middleware
 const authenticate = async (req: any, res: any, next: any) => {
   const token = getSessionToken(req);
+  console.log(`[AUTH-DEBUG] Path: ${req.path}, Method: ${req.method}, Token: ${token ? (token.substring(0, 15) + "...") : "NONE"}`);
   if (!token) {
-    console.warn("[AUTH] No token found in session or headers");
+    console.warn(`[AUTH] No token found in session or headers for ${req.path}`);
     return res.status(401).json({ error: "Unauthorized", details: "No active session" });
   }
 
   if (token === AUTH_TOKEN) {
+    console.log(`[AUTH-DEBUG] Matches ADMIN_TOKEN`);
     return next();
   }
 
@@ -181,6 +183,85 @@ app.use("/api", (req, res, next) => {
   }
   next();
 });
+
+function parseVariantFromDetallesVenta(detallesVenta: string | undefined): { variant_sku?: string, variant_desc?: string, notes?: string } {
+  if (!detallesVenta) return {};
+  const trimmed = detallesVenta.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.variant_sku !== undefined) {
+        return {
+          variant_sku: parsed.variant_sku,
+          variant_desc: parsed.variant_desc,
+          notes: parsed.notes
+        };
+      }
+    } catch (e) {}
+  }
+  return {};
+}
+
+async function handleVariantStockAdjustment(productId: string, variantSku: string | undefined, delta: number) {
+  if (!supabase) return;
+  try {
+    const { data: prods, error: fetchError } = await supabase
+      .from("products")
+      .select("stock_actual, detalles")
+      .eq("id", productId);
+    
+    if (fetchError || !prods || prods.length === 0) {
+      console.error(`[STOCK_ADJUST] Error fetching product ${productId}:`, fetchError);
+      return;
+    }
+    
+    const prod = prods[0];
+    const detallesString = prod.detalles || "";
+    
+    if (variantSku && detallesString.trim().startsWith("{") && detallesString.trim().endsWith("}")) {
+      try {
+        const parsed = JSON.parse(detallesString);
+        if (Array.isArray(parsed.variants) && parsed.variants.length > 0) {
+          let found = false;
+          const updatedVariants = parsed.variants.map((v: any) => {
+            if (v.sku === variantSku) {
+              found = true;
+              return { ...v, stock: Math.max(0, (Number(v.stock) || 0) + delta) };
+            }
+            return v;
+          });
+          
+          if (found) {
+            parsed.variants = updatedVariants;
+            const newTotalStock = updatedVariants.reduce((sum: number, v: any) => sum + (Number(v.stock) || 0), 0);
+            
+            await supabase
+              .from("products")
+              .update({
+                detalles: JSON.stringify(parsed),
+                stock_actual: newTotalStock
+              })
+              .eq("id", productId);
+            
+            console.log(`[STOCK_ADJUST] Successfully adjusted variant ${variantSku} of product ${productId} by ${delta}. New stock total: ${newTotalStock}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error(`[STOCK_ADJUST] Error parsing product detalles JSON for product ${productId}:`, e);
+      }
+    }
+    
+    const newStockActual = Math.max(0, (Number(prod.stock_actual) || 0) + delta);
+    await supabase
+      .from("products")
+      .update({ stock_actual: newStockActual })
+      .eq("id", productId);
+    console.log(`[STOCK_ADJUST] Fallback: Adjusted total stock of product ${productId} by ${delta}. New total: ${newStockActual}`);
+  } catch (err) {
+    console.error(`[STOCK_ADJUST] Exception in handleVariantStockAdjustment:`, err);
+  }
+}
 
 // Health check
 app.get("/api/health", async (req, res) => {
@@ -465,6 +546,8 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     
     const p = req.body;
+    console.log(`[PRODUCTS_PUT] Received PUT request for ID "${req.params.id}" with body:`, p);
+    
     const updateData: any = {};
     if (p.nombre !== undefined) updateData.nombre = p.nombre;
     if (p.sku_barcode !== undefined) updateData.sku_barcode = p.sku_barcode;
@@ -475,7 +558,9 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
     if (p.stock_minimo !== undefined) updateData.stock_minimo = Number(p.stock_minimo) || 0;
     if (p.detalles !== undefined) updateData.detalles = p.detalles;
     if (p.userId !== undefined) updateData.userId = p.userId || "admin";
-    updateData.updated_at = new Date();
+    updateData.updated_at = new Date().toISOString();
+
+    console.log(`[PRODUCTS_PUT] Updating supabase with data:`, updateData);
 
     const { data: updatedProducts, error } = await supabase
       .from("products")
@@ -483,7 +568,12 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
       .eq("id", req.params.id)
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error("[PRODUCTS_PUT] Supabase update failed:", error);
+      throw error;
+    }
+
+    console.log(`[PRODUCTS_PUT] Updated row count:`, updatedProducts?.length || 0);
 
     const data = (updatedProducts && updatedProducts.length > 0)
       ? updatedProducts[0]
@@ -493,13 +583,19 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
     if (req.body.precio_venta !== undefined || req.body.costo_unitario !== undefined) {
       const newPrice = Number(data.precio_venta);
       const newCost = Number(data.costo_unitario);
+      console.log(`[PRODUCTS_PUT] Cascading changes to sales with new price: ${newPrice}, new cost: ${newCost}`);
 
-      const { data: salesToUpdate } = await supabase
+      const { data: salesToUpdate, error: salesFetchError } = await supabase
         .from("sales")
         .select("id, descuento")
         .eq("product_id", req.params.id);
 
-      if (salesToUpdate && salesToUpdate.length > 0) {
+      if (salesFetchError) {
+        console.error("[PRODUCTS_PUT] Failed to fetch sales:", salesFetchError);
+      }
+
+      if (salesToUpdate && Array.isArray(salesToUpdate) && salesToUpdate.length > 0) {
+        console.log(`[PRODUCTS_PUT] Found ${salesToUpdate.length} sales to cascade updates to.`);
         // Update all related sales to reflect the new financial reality
         const updates = salesToUpdate.map(sale => ({
           id: sale.id,
@@ -509,14 +605,20 @@ app.put("/api/products/:id", authenticate, async (req, res) => {
 
         // Perform updates in batches or individually if upsert is not preferred
         for (const update of updates) {
-          await supabase
+          const { error: saleUpError } = await supabase
             .from("sales")
             .update({
               ingreso_bruto: update.ingreso_bruto,
               ingreso_neto: update.ingreso_neto
             })
             .eq("id", update.id);
+          
+          if (saleUpError) {
+            console.error(`[PRODUCTS_PUT] Error updating sale id "${update.id}":`, saleUpError);
+          }
         }
+      } else {
+        console.log(`[PRODUCTS_PUT] No related sales found to update.`);
       }
     }
 
@@ -686,15 +788,10 @@ app.post("/api/sales", authenticate, async (req, res) => {
       }
     }
 
-    // Decrement stock
+    // Decrement stock (with support for variants)
     if (data.product_id) {
-      const { data: prods } = await supabase.from("products").select("stock_actual").eq("id", data.product_id);
-      const prod = (prods && prods.length > 0) ? prods[0] : null;
-      if (prod) {
-        await supabase.from("products")
-          .update({ stock_actual: Math.max(0, (Number(prod.stock_actual) || 0) - 1) })
-          .eq("id", data.product_id);
-      }
+      const { variant_sku } = parseVariantFromDetallesVenta(data.detalles_venta);
+      await handleVariantStockAdjustment(data.product_id, variant_sku, -1);
     }
 
     // Fetch product name for better description
@@ -853,6 +950,22 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     if (s.detalles_venta !== undefined) updateData.detalles_venta = s.detalles_venta;
     if (s.estado_entrega !== undefined) updateData.estado_entrega = s.estado_entrega;
 
+    // Adjust product/variant stock if product or variant changed on edit
+    const oldProductId = oldSale.product_id;
+    const { variant_sku: oldVariantSku } = parseVariantFromDetallesVenta(oldSale.detalles_venta);
+
+    const newProductId = updateData.product_id !== undefined ? updateData.product_id : oldProductId;
+    const { variant_sku: newVariantSku } = parseVariantFromDetallesVenta(updateData.detalles_venta !== undefined ? updateData.detalles_venta : oldSale.detalles_venta);
+
+    if (oldProductId !== newProductId || oldVariantSku !== newVariantSku) {
+      if (oldProductId) {
+        await handleVariantStockAdjustment(oldProductId, oldVariantSku, 1);
+      }
+      if (newProductId) {
+        await handleVariantStockAdjustment(newProductId, newVariantSku, -1);
+      }
+    }
+
     // 2. Perform the update
     const { data: updatedSales, error: updateError } = await supabase
       .from("sales")
@@ -990,22 +1103,16 @@ app.delete("/api/sales/:id", authenticate, async (req, res) => {
     // Fetch sale first to find the product_id and restore stock
     const { data: sales, error: fetchError } = await supabase
       .from("sales")
-      .select("product_id")
+      .select("product_id, detalles_venta")
       .eq("id", req.params.id);
 
     if (fetchError) throw fetchError;
     const sale = (sales && sales.length > 0) ? sales[0] : null;
 
     if (sale && sale.product_id) {
-        // Increment stock
-        const { data: prods } = await supabase.from("products").select("stock_actual").eq("id", sale.product_id);
-        const prod = (prods && prods.length > 0) ? prods[0] : null;
-        if (prod) {
-            await supabase
-                .from("products")
-                .update({ stock_actual: Number(prod.stock_actual) + 1 })
-                .eq("id", sale.product_id);
-        }
+        // Increment stock (supporting variants)
+        const { variant_sku } = parseVariantFromDetallesVenta(sale.detalles_venta);
+        await handleVariantStockAdjustment(sale.product_id, variant_sku, 1);
     }
 
     // Clean up associated movements

@@ -17,6 +17,31 @@ import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 import { apiFetch as fetch } from "../lib/api";
 
+interface Variant {
+  sku: string;
+  description: string;
+  stock: number;
+}
+
+const parseProductDetalles = (detallesString: string | undefined): { notes: string; variants: Variant[] } => {
+  if (!detallesString) {
+    return { notes: "", variants: [] };
+  }
+  const trimmed = detallesString.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        notes: parsed.notes || "",
+        variants: Array.isArray(parsed.variants) ? parsed.variants : []
+      };
+    } catch (e) {
+      // Ignore and treat as fallback string
+    }
+  }
+  return { notes: detallesString, variants: [] };
+};
+
 export const Inventory: React.FC = () => {
   const { products, setProducts, productsTotal, fetchProducts, refreshData, token, user } = useData();
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,10 +52,14 @@ export const Inventory: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const itemsPerPage = 5000;
+
+  // Variants sub-state
+  const [variants, setVariants] = useState<Variant[]>([]);
 
   // New/Edit Product Form State
   const [formData, setFormData] = useState({
@@ -103,21 +132,25 @@ export const Inventory: React.FC = () => {
   ]));
 
   const startEdit = (product: any) => {
+    const parsed = parseProductDetalles(product.detalles);
+    setFormError(null);
     setFormData({
-      nombre: product.nombre,
-      sku_barcode: product.sku_barcode,
-      costo_unitario: product.costo_unitario,
-      precio_venta: product.precio_venta,
-      stock_actual: product.stock_actual,
-      stock_minimo: product.stock_minimo,
-      categoria: product.categoria || "General",
-      detalles: product.detalles || ""
+      nombre: product.nombre || "",
+      sku_barcode: product.sku_barcode || "",
+      costo_unitario: product.costo_unitario || 0,
+      precio_venta: product.precio_venta || 0,
+      stock_actual: product.stock_actual || 0,
+      stock_minimo: product.stock_minimo || 0,
+      categoria: product.categoria || "SKINCARE Y PERFUMERÍA",
+      detalles: parsed.notes || ""
     });
+    setVariants(parsed.variants || []);
     setEditingId(product.id);
     setIsAdding(true);
   };
 
   const resetForm = () => {
+    setFormError(null);
     setFormData({
       nombre: "",
       sku_barcode: "",
@@ -128,6 +161,7 @@ export const Inventory: React.FC = () => {
       categoria: "SKINCARE Y PERFUMERÍA",
       detalles: ""
     });
+    setVariants([]);
     setEditingId(null);
     setIsAdding(false);
   };
@@ -374,17 +408,33 @@ export const Inventory: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setFormError(null);
     try {
       const url = editingId ? `/api/products/${editingId}` : "/api/products";
       const method = editingId ? "PUT" : "POST";
       
+      const totalStock = variants.length > 0
+        ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+        : Number(formData.stock_actual) || 0;
+
+      const serializedDetalles = variants.length > 0
+        ? JSON.stringify({ notes: formData.detalles, variants })
+        : formData.detalles;
+
+      const payload = {
+        ...formData,
+        stock_actual: totalStock,
+        detalles: serializedDetalles,
+        userId: "admin"
+      };
+
       const response = await fetch(url, {
         method,
         headers: { 
           "Content-Type": "application/json",
           "Authorization": token || localStorage.getItem("glow_token") || ""
         },
-        body: JSON.stringify({ ...formData, userId: "admin" })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
@@ -396,6 +446,7 @@ export const Inventory: React.FC = () => {
       }
     } catch (err: any) {
       console.error("[INVENTORY] handleSubmit error:", err);
+      setFormError(err.message || "Error al guardar el producto");
       alert(`Error al guardar producto: ${err.message}`);
     } finally {
       setIsSaving(false);
@@ -419,7 +470,14 @@ export const Inventory: React.FC = () => {
         "Precio Venta": p.precio_venta,
         "Stock Actual": p.stock_actual,
         "Stock Mínimo": p.stock_minimo,
-        "Detalles": p.detalles || "",
+        "Detalles": (() => {
+          const parsed = parseProductDetalles(p.detalles);
+          if (parsed.variants.length > 0) {
+            const variantSummary = parsed.variants.map(v => `${v.description} (${v.sku}): Stock ${v.stock}`).join(" | ");
+            return parsed.notes ? `${parsed.notes} [Variantes: ${variantSummary}]` : `[Variantes: ${variantSummary}]`;
+          }
+          return p.detalles || "";
+        })(),
         "ID": p.id
       }));
 
@@ -604,9 +662,31 @@ export const Inventory: React.FC = () => {
                   <td className="px-4 py-5">
                     <div className="font-semibold text-white group-hover:text-pink-400 transition-colors">{p.nombre}</div>
                     <div className="text-[10px] text-white/30 font-mono tracking-wider mb-1">{p.sku_barcode}</div>
-                    {p.detalles && (
-                        <div className="text-[10px] text-pink-400/60 italic">{p.detalles}</div>
-                    )}
+                    {(() => {
+                      const parsed = parseProductDetalles(p.detalles);
+                      return (
+                        <div className="space-y-1 mt-1">
+                          {parsed.notes && (
+                            <div className="text-[10px] text-pink-400/60 italic">{parsed.notes}</div>
+                          )}
+                          {parsed.variants.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {parsed.variants.map((v, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-pink-500/15 border border-pink-500/30 text-pink-200 rounded-md font-mono text-[9px]"
+                                  title={`SKU Variante: ${v.sku}`}
+                                >
+                                  <span className="font-semibold text-white/70">{v.description || 'Sin detalle'}:</span> 
+                                  <span className="text-pink-400 font-bold">{v.stock} u.</span>
+                                  <span className="text-[8px] text-white/30 font-mono">({v.sku})</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-5">
                     <span className="px-2 py-0.5 bg-white/5 rounded-full text-[9px] font-bold uppercase tracking-wider border border-white/10 whitespace-nowrap">
@@ -783,13 +863,20 @@ export const Inventory: React.FC = () => {
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest pl-1">Stock Inicial</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest pl-1">
+                      {variants.length > 0 ? "Stock Total (Suma de Variantes)" : "Stock Inicial"}
+                    </label>
                     <input 
                         type="number" 
                         required
-                        value={formData.stock_actual}
+                        disabled={variants.length > 0}
+                        value={variants.length > 0 ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0) : formData.stock_actual}
                         onChange={(e) => setFormData({...formData, stock_actual: Number(e.target.value)})}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"
+                        className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none ${
+                          variants.length > 0 
+                            ? 'opacity-60 cursor-not-allowed bg-white/10 font-bold border-pink-500/30 text-pink-400 focus:border-pink-500/30' 
+                            : 'focus:border-pink-500 transition-colors'
+                        }`}
                     />
                 </div>
                 <div className="space-y-2">
@@ -803,16 +890,117 @@ export const Inventory: React.FC = () => {
                     />
                 </div>
                 <div className="space-y-2 col-span-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest pl-1">Detalles (Talle / Color / etc)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest pl-1">Detalles o Notas del Producto</label>
                     <input 
                         type="text" 
                         value={formData.detalles}
                         onChange={(e) => setFormData({...formData, detalles: e.target.value})}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-white focus:outline-none focus:border-pink-500 transition-colors"
-                        placeholder="Ej: Negro / Talle M"
+                        placeholder="Ej: Un polvo translúcido de alta cobertura o notas generales"
                     />
                 </div>
               </div>
+
+              {/* Sección de Variantes */}
+              <div className="border-t border-white/5 pt-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Variantes del Producto</h3>
+                    <p className="text-[11px] text-white/40">Gestiona tonos, colores o talles con sus propios SKUs y stocks.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newVariant = {
+                        sku: `${formData.sku_barcode || 'SKU'}-${variants.length + 1}`,
+                        description: "",
+                        stock: 0
+                      };
+                      setVariants([...variants, newVariant]);
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-pink-500/10 hover:bg-pink-500/25 border border-pink-500/30 hover:border-pink-500 text-pink-400 rounded-xl text-[11px] font-bold transition-all shrink-0 active:scale-95"
+                  >
+                    <Plus size={14} />
+                    Agregar Variante
+                  </button>
+                </div>
+
+                {variants.length > 0 ? (
+                  <div className="space-y-3 bg-white/5 p-4 rounded-3xl border border-white/10 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    {variants.map((v, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-white/5 p-3 rounded-2xl border border-white/5 relative group/variant hover:bg-white/10 transition-colors">
+                        <div className="md:col-span-4 space-y-1.5">
+                          <label className="text-[9px] text-white/30 uppercase font-bold pl-1 font-mono">SKU Variante</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="SKU-VAR"
+                            value={v.sku}
+                            onChange={(e) => {
+                              const updated = [...variants];
+                              updated[index].sku = e.target.value;
+                              setVariants(updated);
+                            }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-white text-xs focus:outline-none focus:border-pink-500 transition-colors font-mono"
+                          />
+                        </div>
+                        <div className="md:col-span-5 space-y-1.5">
+                          <label className="text-[9px] text-white/30 uppercase font-bold pl-1">Descripción (Tono / Color / Talle)</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ej: Tono 02, Talle M"
+                            value={v.description}
+                            onChange={(e) => {
+                              const updated = [...variants];
+                              updated[index].description = e.target.value;
+                              setVariants(updated);
+                            }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-white text-xs focus:outline-none focus:border-pink-500 transition-colors"
+                          />
+                        </div>
+                        <div className="md:col-span-2 space-y-1.5">
+                          <label className="text-[9px] text-white/30 uppercase font-bold pl-1">Stock</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            value={v.stock}
+                            onChange={(e) => {
+                              const updated = [...variants];
+                              updated[index].stock = Math.max(0, Number(e.target.value));
+                              setVariants(updated);
+                            }}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2 px-3 text-white text-xs focus:outline-none focus:border-pink-500 transition-colors font-semibold text-center"
+                          />
+                        </div>
+                        <div className="md:col-span-1 flex justify-center pb-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVariants(variants.filter((_, i) => i !== index));
+                            }}
+                            className="p-2 text-red-500/60 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"
+                            title="Eliminar variante"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-xs text-white/30 italic">
+                    Sin variantes para este producto. Agrega variantes para gestionar stocks específicos.
+                  </div>
+                )}
+              </div>
+
+              {formError && (
+                <div id="product-form-error" className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs font-semibold leading-relaxed">
+                  ⚠️ {formError}
+                </div>
+              )}
 
               <div className="flex gap-4 pt-4">
                   <button 

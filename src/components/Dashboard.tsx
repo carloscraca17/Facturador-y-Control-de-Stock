@@ -24,6 +24,31 @@ import { Scanner } from "./Scanner";
 import { Sale } from "../types";
 import { apiFetch as fetch } from "../lib/api";
 
+interface Variant {
+  sku: string;
+  description: string;
+  stock: number;
+}
+
+const parseProductDetalles = (detallesString: string | undefined): { notes: string; variants: Variant[] } => {
+  if (!detallesString) {
+    return { notes: "", variants: [] };
+  }
+  const trimmed = detallesString.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        notes: parsed.notes || "",
+        variants: Array.isArray(parsed.variants) ? parsed.variants : []
+      };
+    } catch (e) {
+      // Ignore fallback
+    }
+  }
+  return { notes: detallesString, variants: [] };
+};
+
 interface DashboardProps {
   onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;
 }
@@ -34,6 +59,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const itemsPerPage = 20;
   const [isScanning, setIsScanning] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [selectedVariantSku, setSelectedVariantSku] = useState<string>("");
+  const [tempNotes, setTempNotes] = useState<string>("");
+
+  React.useEffect(() => {
+    if (editingSale) {
+      const details = editingSale.detalles_venta || "";
+      if (details.trim().startsWith("{") && details.trim().endsWith("}")) {
+        try {
+          const parsed = JSON.parse(details);
+          setSelectedVariantSku(parsed.variant_sku || "");
+          setTempNotes(parsed.notes || "");
+          return;
+        } catch (e) {
+          // ignore
+        }
+      }
+      setSelectedVariantSku("");
+      setTempNotes(details);
+    } else {
+      setSelectedVariantSku("");
+      setTempNotes("");
+    }
+  }, [editingSale]);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -137,13 +185,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
     if (!editingSale) return;
 
     try {
+      const product = products.find(p => p.id === editingSale.product_id);
+      const { variants } = parseProductDetalles(product?.detalles);
+      const selectedVariant = variants.find(v => v.sku === selectedVariantSku);
+
+      let dbDetallesVenta = tempNotes;
+      if (selectedVariant) {
+        dbDetallesVenta = JSON.stringify({
+          variant_sku: selectedVariant.sku,
+          variant_desc: selectedVariant.description,
+          notes: tempNotes
+        });
+      }
+
+      const salePayload = {
+        ...editingSale,
+        detalles_venta: dbDetallesVenta
+      };
+
       const response = await fetch(`/api/sales/${editingSale.id}`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": localStorage.getItem("glow_token") || "" 
         },
-        body: JSON.stringify(editingSale)
+        body: JSON.stringify(salePayload)
       });
       if (response.ok) {
         setEditingSale(null);
@@ -836,11 +902,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                           <div className="font-semibold text-white leading-tight">
                             {productName || `Venta #${sale.id.slice(-4).toUpperCase()}`}
                           </div>
-                          {sale.detalles_venta && (
-                            <div className="text-[10px] text-pink-400 font-medium italic opacity-100 bg-pink-500/5 px-1.5 py-0.5 rounded inline-block w-fit">
-                              {sale.detalles_venta}
-                            </div>
-                          )}
+                          {sale.detalles_venta && (() => {
+                            let text = sale.detalles_venta;
+                            if (text.trim().startsWith("{") && text.trim().endsWith("}")) {
+                              try {
+                                const parsed = JSON.parse(text);
+                                const varPart = parsed.variant_desc ? `Var: ${parsed.variant_desc}` : parsed.variant_sku ? `Var SKU: ${parsed.variant_sku}` : "";
+                                const notesPart = parsed.notes ? `(${parsed.notes})` : "";
+                                text = [varPart, notesPart].filter(Boolean).join(" ");
+                              } catch (e) {
+                                // ignore
+                              }
+                            }
+                            if (!text) return null;
+                            return (
+                              <div className="text-[10px] text-pink-400 font-medium italic opacity-100 bg-pink-500/5 px-1.5 py-0.5 rounded inline-block w-fit">
+                                {text}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-white/60">
@@ -1122,8 +1202,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                         <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Comentarios (Talle/Color/Tono)</label>
                         <input 
                         type="text"
-                        value={editingSale.detalles_venta || ''}
-                        onChange={(e) => setEditingSale({...editingSale, detalles_venta: e.target.value})}
+                        value={tempNotes}
+                        onChange={(e) => setTempNotes(e.target.value)}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-pink-500 outline-none"
                         />
                     </div>
@@ -1138,6 +1218,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                     </div>
                   </div>
                 </div>
+
+                {(() => {
+                  const product = products.find(p => p.id === editingSale.product_id);
+                  if (!product) return null;
+                  const { variants } = parseProductDetalles(product.detalles);
+                  if (variants.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <label className="block text-[10px] uppercase tracking-widest text-[#ec4899] font-bold mb-2">Variante del Producto</label>
+                      <select 
+                        value={selectedVariantSku}
+                        onChange={(e) => setSelectedVariantSku(e.target.value)}
+                        className="w-full bg-[#1e1e1e] border border-pink-500/30 rounded-xl px-4 py-3 text-pink-300 focus:border-pink-500 outline-none text-sm font-semibold"
+                      >
+                        <option value="" className="bg-[#1e1e1e] text-white">Sin variante (General)</option>
+                        {variants.map((v, idx) => (
+                          <option key={`${v.sku}_${idx}`} value={v.sku} className="bg-[#1e1e1e] text-white">
+                            {v.description || 'Sin descripción'} ({v.sku}) - Stock: {v.stock} u.
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>

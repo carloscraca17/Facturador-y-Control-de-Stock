@@ -5,6 +5,31 @@ import { X, Package, Search, Loader2, Keyboard, Camera, Check } from "lucide-rea
 import { useData } from "./DataProvider";
 import { apiFetch as fetch } from "../lib/api";
 
+interface Variant {
+  sku: string;
+  description: string;
+  stock: number;
+}
+
+const parseProductDetalles = (detallesString: string | undefined): { notes: string; variants: Variant[] } => {
+  if (!detallesString) {
+    return { notes: "", variants: [] };
+  }
+  const trimmed = detallesString.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        notes: parsed.notes || "",
+        variants: Array.isArray(parsed.variants) ? parsed.variants : []
+      };
+    } catch (e) {
+      // Ignore fallback
+    }
+  }
+  return { notes: detallesString, variants: [] };
+};
+
 interface ScannerProps {
   onClose: () => void;
 }
@@ -18,6 +43,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
   const [productSearch, setProductSearch] = useState("");
   const [localProducts, setLocalProducts] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const [selectedVariantSku, setSelectedVariantSku] = useState<string>("");
 
   const [mode, setMode] = useState<"scanning" | "manual">("scanning");
   const [manualData, setManualData] = useState({
@@ -74,6 +101,19 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     ? globalProducts.find(p => p.sku_barcode === data)
     : globalProducts.find(p => p.id === manualData.product_id) || localProducts.find(p => p.id === manualData.product_id);
 
+  React.useEffect(() => {
+    if (foundProduct) {
+      const { variants } = parseProductDetalles(foundProduct.detalles);
+      if (variants.length > 0) {
+        setSelectedVariantSku(variants[0].sku);
+      } else {
+        setSelectedVariantSku("");
+      }
+    } else {
+      setSelectedVariantSku("");
+    }
+  }, [foundProduct]);
+
   const handleRegister = async () => {
     if (mode === "scanning" && !foundProduct) {
         alert("Primero selecciona o simula un producto válido.");
@@ -98,6 +138,18 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     const finalBruto = bruto - desc;
     const neto = finalBruto - (foundProduct?.costo_unitario || 0);
 
+    const { variants } = parseProductDetalles(foundProduct?.detalles);
+    const selectedVariant = variants.find(v => v.sku === selectedVariantSku);
+    
+    let dbDetallesVenta = extraData.detalles_venta;
+    if (selectedVariant) {
+      dbDetallesVenta = JSON.stringify({
+        variant_sku: selectedVariant.sku,
+        variant_desc: selectedVariant.description,
+        notes: extraData.detalles_venta
+      });
+    }
+
     try {
       const payload = {
         canal_venta: extraData.canal_venta || "Local",
@@ -110,7 +162,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
         pagado: extraData.pagado,
         estado_arca: mode === "scanning" ? "Pendiente" : manualData.estado_arca,
         moneda: extraData.moneda,
-        detalles_venta: extraData.detalles_venta,
+        detalles_venta: dbDetallesVenta,
         pago_parcial: extraData.pagado ? finalBruto : (Number(extraData.pago_parcial) || 0),
         estado_entrega: extraData.estado_entrega,
         userId: "admin"
@@ -375,6 +427,27 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
                             />
                         </div>
                     </div>
+
+                    {foundProduct && (() => {
+                        const { variants } = parseProductDetalles(foundProduct.detalles);
+                        if (variants.length === 0) return null;
+                        return (
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-widest text-[#ec4899] font-bold mb-2">Variante del Producto</label>
+                                <select 
+                                    value={selectedVariantSku}
+                                    onChange={(e) => setSelectedVariantSku(e.target.value)}
+                                    className="w-full bg-[#1e1e1e] border border-pink-500/30 rounded-xl px-4 py-3 text-pink-300 focus:border-pink-500 outline-none text-sm font-semibold"
+                                >
+                                    {variants.map((v, idx) => (
+                                        <option key={`${v.sku}_${idx}`} value={v.sku} className="bg-[#1e1e1e] text-white">
+                                            {v.description || 'Sin nombre'} ({v.sku}) - Stock: {v.stock}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        );
+                    })()}
 
                     <div>
                         <label className="block text-[10px] uppercase tracking-widest text-white/40 font-bold mb-2">Comentarios (Talle/Color/Tono)</label>
