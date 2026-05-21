@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData } from "./DataProvider";
+import { apiFetch as fetch } from "../lib/api";
 import { 
   ArrowUpRight, 
   ArrowDownRight, 

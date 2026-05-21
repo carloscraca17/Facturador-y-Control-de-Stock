@@ -1471,7 +1471,6 @@ app.delete("/api/customers/:id", authenticate, async (req, res) => {
 });
 
 
-
 // Seed API
 app.post("/api/admin/seed", async (req, res) => {
   try {

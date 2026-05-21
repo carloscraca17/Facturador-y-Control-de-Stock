@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Users, UserPlus, Shield, Lock, Trash2, Edit3, Check, X, AlertCircle } from "lucide-react";
 import { AppUser } from "../types";
+import { apiFetch as fetch } from "../lib/api";
 
 export function AccessControl() {
   const [users, setUsers] = useState<AppUser[]>([]);
