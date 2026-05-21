@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Send, X, Bot, Sparkles, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { GoogleGenAI } from "@google/genai";
 import { useData } from "./DataProvider";
 
 export const BusinessChat: React.FC = () => {
@@ -12,7 +11,7 @@ export const BusinessChat: React.FC = () => {
     { role: "assistant", text: "¡Hola! Soy tu asistente de **GlowManager AI**. ¿En qué puedo ayudarte con el análisis de tu negocio hoy?" }
   ]);
   const [loading, setLoading] = useState(false);
-  const { stats, products, sales, expenses } = useData();
+  const { stats, products, sales, expenses, token } = useData();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,12 +27,6 @@ export const BusinessChat: React.FC = () => {
     setLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("La clave de API de Gemini no está configurada en el entorno.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
       const businessSnapshot = {
         stats,
         productsCount: products.length,
@@ -43,39 +36,35 @@ export const BusinessChat: React.FC = () => {
         totalExpenses: expenses.reduce((acc, e) => acc + e.monto, 0)
       };
 
-      const systemInstruction = `
-        Eres el analista financiero de "GlowManager AI", una herramienta experta para negocios de cosmética.
-        Tu objetivo es analizar los datos de ventas, stock y gastos que el usuario te proporciona.
-        
-        DATOS ACTUALES DEL NEGOCIO:
-        ${JSON.stringify(businessSnapshot, null, 2)}
-        
-        Instrucciones:
-        1. Responde de forma concisa, profesional y con un toque elegante (estética beauty).
-        2. Si el usuario pregunta por ganancias o desempeño, resta siempre los gastos y comisiones mencionados.
-        3. Identifica tendencias críticas (ej. falta de stock, caída en margen neto).
-        4. Sugiere acciones concretas para mejorar la rentabilidad.
-        5. La moneda es Pesos Argentinos ($) si no se especifica otra.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          { role: "user", parts: [{ text: systemInstruction }] },
-          { role: "user", parts: [{ text: userMsg }] }
-        ]
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token || ""
+        },
+        body: JSON.stringify({
+          message: userMsg,
+          history: messages,
+          businessSnapshot
+        })
       });
 
-      if (!response.text) {
-        throw new Error("No se obtuvo respuesta del modelo.");
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.details || errData.error || `Error del servidor (status: ${response.status})`);
       }
 
-      setMessages(prev => [...prev, { role: "assistant", text: response.text! }]);
+      const result = await response.json();
+      if (!result.text) {
+        throw new Error("No se obtuvo respuesta del analista.");
+      }
+
+      setMessages(prev => [...prev, { role: "assistant", text: result.text }]);
     } catch (error: any) {
       console.error("Gemini Error:", error);
-      let errorMsg = "Lo siento, hubo un error al procesar tu consulta.";
-      if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("not valid")) {
-        errorMsg = "La clave de API de Gemini parece no ser válida. Por favor, revísala en el panel de **Settings > Secrets**.";
+      let errorMsg = error.message || "Lo siento, hubo un error al procesar tu consulta.";
+      if (errorMsg.includes("La clave de API de Gemini")) {
+        errorMsg = "La clave de API de Gemini no está configurada o no es válida. Por favor, revísala en el panel de **Settings > Secrets**.";
       }
       setMessages(prev => [...prev, { role: "assistant", text: errorMsg }]);
     } finally {
