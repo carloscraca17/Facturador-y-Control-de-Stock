@@ -202,6 +202,22 @@ function parseVariantFromDetallesVenta(detallesVenta: string | undefined): { var
   return {};
 }
 
+function getHumanReadableDetalles(detallesVenta: string | undefined): string {
+  if (!detallesVenta) return "";
+  const trimmed = detallesVenta.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const varPart = parsed.variant_desc ? `Var: ${parsed.variant_desc}` : parsed.variant_sku ? `Var SKU: ${parsed.variant_sku}` : "";
+      const notesPart = parsed.notes ? `(${parsed.notes})` : "";
+      return [varPart, notesPart].filter(Boolean).join(" ");
+    } catch (e) {
+      // ignore
+    }
+  }
+  return trimmed;
+}
+
 async function handleVariantStockAdjustment(productId: string, variantSku: string | undefined, delta: number) {
   if (!supabase) return;
   try {
@@ -803,7 +819,8 @@ app.post("/api/sales", authenticate, async (req, res) => {
     }
 
     const clienteDesc = `${data.cliente_nombre || ""} ${data.cliente_apellido || ""}`.trim() || "Consumidor Final";
-    const detalleDesc = data.detalles_venta ? ` (${data.detalles_venta})` : "";
+    const detallesHuman = getHumanReadableDetalles(data.detalles_venta);
+    const detalleDesc = detallesHuman ? ` (${detallesHuman})` : "";
 
     // Movement fallback
     const amount = data.pagado ? Number(data.ingreso_bruto) : (Number(data.pago_parcial) || 0);
@@ -1018,7 +1035,8 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
         }
       }
       const clienteDesc = `${updatedSale.cliente_nombre || ""} ${updatedSale.cliente_apellido || ""}`.trim() || "Consumidor Final";
-      const detalleDesc = updatedSale.detalles_venta ? ` (${updatedSale.detalles_venta})` : "";
+      const detallesHuman = getHumanReadableDetalles(updatedSale.detalles_venta);
+      const detalleDesc = detallesHuman ? ` (${detallesHuman})` : "";
 
       const { error: syncError } = await supabase.from("movements").insert([{
         tipo_movimiento: diff > 0 ? "Ingreso" : "Egreso",
