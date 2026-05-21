@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Product, Sale, Expense, BusinessStats, Movement, AppUser, Customer } from "../types";
-import { supabase } from "../lib/supabase";
-import { apiFetch as fetch } from "../lib/api";
 
 interface DataContextType {
   user: AppUser | null;
@@ -74,50 +72,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(newUser);
   };
 
-  useEffect(() => {
-    const syncToken = async () => {
-      if (supabase) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.access_token) {
-            setToken(session.access_token);
-            localStorage.setItem("glow_token", session.access_token);
-            if (session.user) {
-              const matchedUser = {
-                id: session.user.id,
-                username: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "manager",
-                role: session.user.user_metadata?.role || "user",
-                permissions: ["dashboard", "inventory", "financials", "customers"]
-              };
-              setUser(matchedUser as any);
-              localStorage.setItem("glow_user", JSON.stringify(matchedUser));
-            }
-          }
-        } catch (e) {
-          console.warn("Could not fetch active Supabase session on init:", e);
-        }
-      }
-    };
-    syncToken();
-  }, []);
-
   const logoutAction = () => {
     localStorage.removeItem("glow_token");
     localStorage.removeItem("glow_user");
     setToken(null);
     setUser(null);
-    if (supabase) {
-      supabase.auth.signOut().catch(console.error);
-    }
   };
 
   const fetchProducts = async (page = 1, limit = 5000, search = "") => {
     if (!token) return;
     try {
       const url = `/api/products?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ""}`;
-      const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
       const res = await fetch(url, { 
-        headers: { "Authorization": authHeader } 
+        headers: { "Authorization": token } 
       });
       if (res.status === 401 && token !== "glow-manager-session-true") {
         logoutAction();
@@ -136,9 +103,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchSales = async (page = 1, limit = 20) => {
     if (!token) return;
     try {
-      const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
       const res = await fetch(`/api/sales?page=${page}&limit=${limit}`, { 
-        headers: { "Authorization": authHeader } 
+        headers: { "Authorization": token } 
       });
       if (res.status === 401 && token !== "glow-manager-session-true") {
         logoutAction();
@@ -172,8 +138,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
-      const headers = { "Authorization": authHeader };
+      const headers = { "Authorization": token };
       const [statsRes, prodsRes, salesRes, expRes, movRes, custRes] = await Promise.all([
         fetch("/api/stats", { headers, signal: controller.signal }),
         fetch("/api/products?page=1&limit=5000", { headers, signal: controller.signal }),

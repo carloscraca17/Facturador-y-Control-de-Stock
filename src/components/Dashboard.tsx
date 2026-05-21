@@ -22,7 +22,6 @@ import * as XLSX from "xlsx";
 import { useData } from "./DataProvider";
 import { Scanner } from "./Scanner";
 import { Sale } from "../types";
-import { apiFetch as fetch } from "../lib/api";
 
 interface DashboardProps {
   onPageChange: (page: "dashboard" | "inventory" | "financials" | "access") => void;

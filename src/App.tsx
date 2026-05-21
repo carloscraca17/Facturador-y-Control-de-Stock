@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { DataProvider, useData } from "./components/DataProvider";
 import { Dashboard } from "./components/Dashboard";
-import { apiFetch as fetch } from "./lib/api";
 import { Inventory } from "./components/Inventory";
 import { Financials } from "./components/Financials";
 import { Customers } from "./components/Customers";
