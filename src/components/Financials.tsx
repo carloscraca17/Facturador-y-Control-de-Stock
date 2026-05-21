@@ -447,7 +447,7 @@ export const Financials: React.FC = () => {
   const loanMembers = ["Carlos Craca", "Yeimar González"];
 
   return (
-    <div className="p-4 lg:p-8 space-y-8">
+    <div className="p-4 lg:p-8 pb-24 lg:pb-8 space-y-8">
       {/* Header & Balance Cards */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
@@ -597,7 +597,7 @@ export const Financials: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Calendar size={14} className="text-white/40" />
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase font-bold tracking-widest text-white/40">Desde</span>
@@ -1000,7 +1000,7 @@ export const Financials: React.FC = () => {
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative w-full max-w-md bg-[#1e1e1e] border border-white/10 rounded-[40px] shadow-2xl overflow-hidden"
+              className="relative w-full max-w-md bg-[#1e1e1e] border border-white/10 rounded-[40px] shadow-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="p-8 space-y-6">
                 <div>

@@ -216,11 +216,11 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-6">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl relative"
+        className="glass w-full max-w-lg rounded-[2.5rem] max-h-[95vh] overflow-y-auto shadow-2xl relative"
       >
         <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-white/5 rounded-full text-white/40 z-10 hover:text-white transition-colors">
           <X size={20} />

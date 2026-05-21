@@ -792,11 +792,11 @@ export const Inventory: React.FC = () => {
 
       {/* Add Product Modal */}
       {isAdding && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-6">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="glass w-full max-w-xl rounded-[2.5rem] overflow-hidden shadow-2xl"
+            className="glass w-full max-w-xl rounded-[2.5rem] max-h-[95vh] overflow-y-auto shadow-2xl"
           >
             <div className="p-8 border-b border-white/5 flex items-center justify-between">
               <h2 className="serif text-3xl font-light italic text-white">{editingId ? 'Editar Producto' : 'Nuevo Producto'}</h2>
@@ -1026,11 +1026,11 @@ export const Inventory: React.FC = () => {
 
       {/* Import Modal */}
       {showImport && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-6">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="glass w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl"
+            className="glass w-full max-w-2xl rounded-[2.5rem] max-h-[95vh] overflow-y-auto shadow-2xl"
           >
             <div className="p-8 border-b border-white/5 flex items-center justify-between">
               <h2 className="serif text-3xl font-light italic text-white">Importar Catálogo</h2>

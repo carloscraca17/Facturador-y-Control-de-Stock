@@ -81,19 +81,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) =
       </nav>
 
       {/* Mobile Bottom Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 h-20 glass border-t border-white/5 z-50 flex md:hidden items-center justify-around px-6">
+      <nav className="fixed bottom-0 left-0 right-0 h-20 glass border-t border-white/5 z-50 flex md:hidden items-center justify-around px-2 sm:px-6">
         {menuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onPageChange(item.id as any)}
-            className={`relative p-3 rounded-xl transition-all flex flex-col items-center gap-1 ${
+            className={`relative p-2.5 sm:p-3 rounded-xl transition-all flex flex-col items-center gap-1 ${
               currentPage === item.id 
                 ? "text-pink-500" 
                 : "text-white/40"
             }`}
           >
             <item.icon size={22} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>
+            <span className="text-[8px] xs:text-[10px] font-bold uppercase tracking-tight xs:tracking-widest text-center truncate max-w-[65px]">{item.label}</span>
             {currentPage === item.id && (
               <motion.div 
                 layoutId="activeTabMobile"
@@ -104,10 +104,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onPageChange }) =
         ))}
         <button 
           onClick={() => logout()}
-          className="p-3 text-white/20 flex flex-col items-center gap-1"
+          className="p-2.5 sm:p-3 text-white/20 flex flex-col items-center gap-1"
         >
           <LogOut size={22} />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Salir</span>
+          <span className="text-[8px] xs:text-[10px] font-bold uppercase tracking-tight xs:tracking-widest">Salir</span>
         </button>
       </nav>
     </>

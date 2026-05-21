@@ -537,7 +537,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="relative bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-md w-full"
+              className="relative bg-zinc-900 border border-white/10 p-6 sm:p-8 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto"
             >
               <h3 className="text-2xl font-bold text-white mb-6">Importar Ventas</h3>
               <p className="text-white/60 text-sm mb-8 leading-relaxed">
@@ -1068,12 +1068,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       {/* Edit Sale Modal */}
       <AnimatePresence>
         {editingSale && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="glass p-8 rounded-[2rem] w-full max-w-lg relative border border-white/10"
+              className="glass p-5 sm:p-8 rounded-[2rem] w-full max-w-lg max-h-[95vh] overflow-y-auto relative border border-white/10"
             >
               <button 
                 onClick={() => setEditingSale(null)}

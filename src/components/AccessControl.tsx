@@ -136,7 +136,7 @@ export function AccessControl() {
   };
 
   return (
-    <div className="space-y-8 p-4 md:p-6 lg:p-10 max-w-5xl mx-auto">
+    <div className="space-y-8 p-4 md:p-6 lg:p-10 pb-24 md:pb-10 max-w-5xl mx-auto">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div>
           <h1 className="serif text-4xl text-white italic">Acceso</h1>
