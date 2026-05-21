@@ -6,7 +6,6 @@ import { Financials } from "./components/Financials";
 import { Customers } from "./components/Customers";
 import { AccessControl } from "./components/AccessControl";
 import { Sidebar } from "./components/Sidebar";
-import { BusinessChat } from "./components/BusinessChat";
 import { LogIn, Sparkles, Loader2, User, Lock, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -149,7 +148,6 @@ const MainContent: React.FC = () => {
           {currentPage === "access" && <AccessControl />}
         </main>
       </div>
-      <BusinessChat />
     </div>
   );
 };

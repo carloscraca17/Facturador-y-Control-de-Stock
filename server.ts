@@ -7,7 +7,6 @@ if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
 
-import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { rawProductData } from "./products_data.js";
 
@@ -1468,87 +1467,6 @@ app.delete("/api/customers/:id", authenticate, async (req, res) => {
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-// IA Gemini Chat API endpoint (Server-side Proxy to prevent exposing process.env.GEMINI_API_KEY)
-let aiClient: GoogleGenAI | null = null;
-const getGeminiClient = () => {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("La clave de API de Gemini no está configurada en las variables de entorno de Vercel.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey.trim(),
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        }
-      }
-    });
-  }
-  return aiClient;
-};
-
-app.post("/api/chat", authenticate, async (req, res) => {
-  const { message, history, businessSnapshot } = req.body;
-
-  try {
-    const ai = getGeminiClient();
-
-    const systemInstruction = `
-        Eres el analista financiero de "GlowManager AI", una herramienta experta para negocios de cosmética.
-        Tu objetivo es analizar los datos de ventas, stock y gastos que el usuario te proporciona.
-        
-        DATOS ACTUALES DEL NEGOCIO:
-        ${JSON.stringify(businessSnapshot, null, 2)}
-        
-        Instrucciones:
-        1. Responde de forma concisa, profesional y con un toque elegante (estética beauty).
-        2. Si el usuario pregunta por ganancias o desempeño, resta siempre los gastos y comisiones mencionados.
-        3. Identifica tendencias críticas (ej. falta de stock, caída en margen neto).
-        4. Sugiere acciones concretas para mejorar la rentabilidad.
-        5. La moneda es Pesos Argentinos ($) si no se especifica otra.
-    `;
-
-    const contents: any[] = [];
-    
-    // Map existing history correctly matching @google/genai role names
-    if (history && Array.isArray(history)) {
-      history.forEach((msg: any) => {
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.text }]
-        });
-      });
-    }
-
-    // Add final query message
-    contents.push({
-      role: "user",
-      parts: [{ text: message }]
-    });
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents,
-      config: {
-        systemInstruction: systemInstruction,
-      }
-    });
-
-    if (!response.text) {
-      throw new Error("No se obtuvo respuesta del modelo de IA.");
-    }
-
-    res.json({ text: response.text });
-  } catch (error: any) {
-    console.error("[GEMINI CHAT ERROR]:", error);
-    res.status(500).json({ 
-      error: "Error del Asistente IA", 
-      details: error.message || "No se pudo comunicar con Gemini"
-    });
   }
 });
 

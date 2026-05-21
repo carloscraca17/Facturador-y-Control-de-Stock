@@ -2,5 +2,5 @@
   "name": "GlowManager AI",
   "description": "Sistema integral de gestión de stock, facturación y análisis financiero para negocios de cosmética, potenciado por IA.",
   "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
