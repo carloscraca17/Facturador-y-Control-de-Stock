@@ -33,7 +33,13 @@ const parseProductDetalles = (detallesString: string | undefined): { notes: stri
       const parsed = JSON.parse(trimmed);
       return {
         notes: parsed.notes || "",
-        variants: Array.isArray(parsed.variants) ? parsed.variants : []
+        variants: Array.isArray(parsed.variants) 
+          ? parsed.variants.map((v: any) => ({
+              sku: v.sku || "",
+              description: v.description || "",
+              stock: typeof v.stock === "number" ? v.stock : Number(v.stock) || 0
+            }))
+          : []
       };
     } catch (e) {
       // Ignore and treat as fallback string
@@ -427,6 +433,8 @@ export const Inventory: React.FC = () => {
         detalles: serializedDetalles,
         userId: "admin"
       };
+
+      console.log("[INVENTORY] Submitting product url:", url, "method:", method, "payload:", payload);
 
       const response = await fetch(url, {
         method,
@@ -868,7 +876,7 @@ export const Inventory: React.FC = () => {
                     </label>
                     <input 
                         type="number" 
-                        required
+                        required={variants.length === 0}
                         disabled={variants.length > 0}
                         value={variants.length > 0 ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0) : formData.stock_actual}
                         onChange={(e) => setFormData({...formData, stock_actual: Number(e.target.value)})}
