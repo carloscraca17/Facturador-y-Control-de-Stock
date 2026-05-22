@@ -492,7 +492,7 @@ export const Inventory: React.FC = () => {
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Inventario");
-      XLSX.writeFile(wb, `Inventario_GlowManager_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `Inventario_TheBellacyShop_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
       console.error("Error exporting products:", err);
       alert("Error al exportar inventario.");

@@ -444,7 +444,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Ventas");
-      XLSX.writeFile(wb, `Ventas_GlowManager_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `Ventas_TheBellacyShop_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
       console.error("Error exporting sales:", err);
       alert("Error al exportar ventas.");
@@ -590,7 +590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
           <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold mb-1">Resumen Ejecutivo</p>
-          <h1 className="serif text-4xl md:text-5xl font-light text-white italic leading-tight">GlowManager <span className="text-pink-400">AI</span></h1>
+          <h1 className="serif text-4xl md:text-5xl font-light text-white italic leading-tight">The Bellacy <span className="text-pink-400">Shop</span></h1>
         </div>
         <div className="flex gap-3">
           <button 

@@ -81,7 +81,7 @@ const MainContent: React.FC = () => {
           <div className="w-20 h-20 bg-gradient-to-br from-pink-500 to-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-pink-500/20">
              <Sparkles className="text-white" size={40} />
           </div>
-          <h1 className="serif text-5xl font-light text-white mb-2 italic text-center">GlowManager <span className="text-pink-400">AI</span></h1>
+          <h1 className="serif text-5xl font-light text-white mb-2 italic text-center">The Bellacy <span className="text-pink-400">Shop</span></h1>
           <p className="text-slate-400 mb-8 text-sm leading-relaxed px-4 text-center">
             Gestión inteligente de stock y análisis financiero.
           </p>
