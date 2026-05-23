@@ -98,21 +98,29 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
   const filteredProducts = productSearch.length >= 2 ? localProducts : globalProducts.slice(0, 50);
 
   const foundProduct = mode === "scanning" 
-    ? globalProducts.find(p => p.sku_barcode === data)
+    ? (globalProducts.find(p => p.sku_barcode === data) || globalProducts.find(p => {
+        const { variants } = parseProductDetalles(p.detalles);
+        return variants.some(v => v.sku === data);
+      }))
     : globalProducts.find(p => p.id === manualData.product_id) || localProducts.find(p => p.id === manualData.product_id);
 
   React.useEffect(() => {
     if (foundProduct) {
       const { variants } = parseProductDetalles(foundProduct.detalles);
       if (variants.length > 0) {
-        setSelectedVariantSku(variants[0].sku);
+        const matchingVariant = mode === "scanning" ? variants.find(v => v.sku === data) : null;
+        if (matchingVariant) {
+          setSelectedVariantSku(matchingVariant.sku);
+        } else {
+          setSelectedVariantSku(variants[0].sku);
+        }
       } else {
         setSelectedVariantSku("");
       }
     } else {
       setSelectedVariantSku("");
     }
-  }, [foundProduct]);
+  }, [foundProduct, data, mode]);
 
   const handleRegister = async () => {
     if (mode === "scanning" && !foundProduct) {
@@ -198,7 +206,11 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
     if (result) {
       setData(result.text);
       setScanning(false);
-      const exists = globalProducts.some(p => p.sku_barcode === result.text);
+      const exists = globalProducts.some(p => {
+        if (p.sku_barcode === result.text) return true;
+        const { variants } = parseProductDetalles(p.detalles);
+        return variants.some(v => v.sku === result.text);
+      });
       setNotFound(!exists);
     }
   };
@@ -206,13 +218,26 @@ export const Scanner: React.FC<ScannerProps> = ({ onClose }) => {
   const simulateScan = () => {
     // Pick a random product from inventory if exists, otherwise a fake one
     if (globalProducts.length > 0) {
-        const randomProd = globalProducts[Math.floor(Math.random() * globalProducts.length)];
-        setData(randomProd.sku_barcode);
+        const productsWithVariants = globalProducts.filter(p => {
+          const { variants } = parseProductDetalles(p.detalles);
+          return variants.length > 0;
+        });
+        
+        if (productsWithVariants.length > 0 && Math.random() > 0.5) {
+          const randomProd = productsWithVariants[Math.floor(Math.random() * productsWithVariants.length)];
+          const { variants } = parseProductDetalles(randomProd.detalles);
+          const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+          setData(randomVariant.sku);
+        } else {
+          const randomProd = globalProducts[Math.floor(Math.random() * globalProducts.length)];
+          setData(randomProd.sku_barcode);
+        }
+        setNotFound(false);
     } else {
         setData("7791234567890"); 
+        setNotFound(true);
     }
     setScanning(false);
-    setNotFound(globalProducts.length === 0);
   };
 
   return (
