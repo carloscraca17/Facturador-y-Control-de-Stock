@@ -61,6 +61,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [selectedVariantSku, setSelectedVariantSku] = useState<string>("");
   const [tempNotes, setTempNotes] = useState<string>("");
+  const [confirmingPaidSale, setConfirmingPaidSale] = useState<Sale | null>(null);
+  const [confirmedAmount, setConfirmedAmount] = useState<number>(0);
 
   React.useEffect(() => {
     if (editingSale) {
@@ -120,26 +122,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
 
   const handleTogglePaid = async (sale: Sale) => {
     const newPaidState = !sale.pagado;
-    const updatePayload = { 
-      ...sale, 
-      pagado: newPaidState,
-      pago_parcial: newPaidState ? sale.ingreso_bruto : 0 // If marked as paid, assume full payment. If unpaid, assume 0 for now as requested.
-    };
-    try {
-      const response = await fetch(`/api/sales/${sale.id}`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": localStorage.getItem("glow_token") || "" 
-        },
-        body: JSON.stringify(updatePayload)
-      });
-      if (response.ok) {
-        await fetchSales(page, itemsPerPage);
-        await refreshData(); // To update stats
+    if (newPaidState) {
+      setConfirmingPaidSale(sale);
+      setConfirmedAmount((sale.ingreso_bruto || 0) - (sale.descuento || 0));
+    } else {
+      const updatePayload = { 
+        ...sale, 
+        pagado: false,
+        pago_parcial: 0
+      };
+      try {
+        const response = await fetch(`/api/sales/${sale.id}`, {
+          method: "PUT",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": localStorage.getItem("glow_token") || "" 
+          },
+          body: JSON.stringify(updatePayload)
+        });
+        if (response.ok) {
+          await fetchSales(page, itemsPerPage);
+          await refreshData(); // To update stats
+        }
+      } catch (err) {
+        console.error("Error toggling paid state:", err);
       }
-    } catch (err) {
-      console.error("Error toggling paid state:", err);
     }
   };
 
@@ -1183,7 +1190,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                     <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 h-[46px]">
                         <button 
                             type="button"
-                            onClick={() => setEditingSale({...editingSale, pagado: true, pago_parcial: editingSale.ingreso_bruto})}
+                            onClick={() => {
+                              const calculatedNet = (editingSale.ingreso_bruto || 0) - (editingSale.descuento || 0);
+                              setEditingSale({
+                                ...editingSale, 
+                                pagado: true, 
+                                pago_parcial: calculatedNet
+                              });
+                            }}
                             className={`flex-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${editingSale.pagado ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-white/40 hover:text-white'}`}
                         >
                             Pagado
@@ -1218,6 +1232,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                     </div>
                   </div>
                 </div>
+
+                {editingSale.pagado && (
+                  <div className="bg-[#10b981]/15 border border-[#10b981]/30 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-widest text-[#10b981] font-bold">Importe Real Cobrado Confirmado</span>
+                      <span className="text-[10px] text-white/45 font-mono">Original: ${(editingSale.ingreso_bruto || 0).toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <input 
+                        type="number"
+                        value={editingSale.pago_parcial || 0}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          const newDesc = (editingSale.ingreso_bruto || 0) - val;
+                          setEditingSale({
+                            ...editingSale,
+                            descuento: newDesc,
+                            pago_parcial: val
+                          });
+                        }}
+                        className="w-full bg-[#1e1e1e] border border-[#10b981]/40 rounded-lg px-3 py-2 text-white font-semibold text-right focus:border-emerald-500 outline-none"
+                      />
+                      <p className="text-[10px] text-white/40 mt-1">Al modificar este campo, el descuento original se ajustará a la diferencia automáticamente.</p>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-white/40 font-medium">Indicador de Descuento:</span>
+                      <span className={`font-mono font-bold ${(editingSale.descuento || 0) >= 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                        {(editingSale.descuento || 0) >= 0 
+                          ? `Descuento: $${(editingSale.descuento || 0).toLocaleString()}` 
+                          : `Aumento: -$${Math.abs(editingSale.descuento || 0).toLocaleString()}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {(() => {
                   const product = products.find(p => p.id === editingSale.product_id);
@@ -1297,6 +1345,123 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                   className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-400 shadow-lg shadow-rose-500/20"
                 >
                   Eliminar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Paid Confirmation Modal with live discount calculation */}
+      <AnimatePresence>
+        {confirmingPaidSale && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="glass p-6 sm:p-8 rounded-[2rem] w-full max-w-md border border-white/10 relative"
+            >
+              <button 
+                onClick={() => setConfirmingPaidSale(null)}
+                className="absolute top-6 right-6 text-white/30 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/20">
+                <Check size={32} />
+              </div>
+              <h3 className="serif text-xl text-white mb-2 italic text-center">Confirmar Cobro de Venta</h3>
+              <p className="text-white/60 text-xs mb-4 text-center leading-relaxed">
+                Vas a marcar como cobrada la venta del producto: 
+                <br />
+                <span className="text-pink-400 font-semibold">
+                  {confirmingPaidSale.product_info?.nombre || products.find(p => p.id === confirmingPaidSale.product_id)?.nombre || "Producto"}
+                </span>
+                {confirmingPaidSale.cliente_nombre && (
+                  <> para <span className="text-white">{confirmingPaidSale.cliente_nombre} {confirmingPaidSale.cliente_apellido || ""}</span></>
+                )}
+              </p>
+
+              <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/5 space-y-3 mb-6">
+                <div className="flex justify-between text-xs text-white/50">
+                  <span>Monto Bruto original:</span>
+                  <span className="font-mono text-white">${(confirmingPaidSale.ingreso_bruto || 0).toLocaleString()}</span>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase tracking-widest text-[#10b981] font-bold">
+                    Monto Real a Cobrar ($)
+                  </label>
+                  <input 
+                    type="number"
+                    value={confirmedAmount}
+                    onChange={(e) => setConfirmedAmount(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#10b981]/40 rounded-lg px-3 py-2 text-white font-semibold text-right focus:border-emerald-500 outline-none"
+                    autoFocus
+                  />
+                  <p className="text-[10px] text-white/40">
+                    Confirma o modifica este valor real para registrarlo en FINANZAS.
+                  </p>
+                </div>
+
+                <div className="flex justify-between items-center text-xs border-t border-white/5 pt-2">
+                  <span className="text-white/40">Indicador de Descuento:</span>
+                  {(() => {
+                    const diffVal = (confirmingPaidSale.ingreso_bruto || 0) - confirmedAmount;
+                    return (
+                      <span className={`font-mono font-bold ${diffVal >= 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                        {diffVal >= 0 ? `Descuento: $${diffVal.toLocaleString()}` : `Aumento: -$${Math.abs(diffVal).toLocaleString()}`}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setConfirmingPaidSale(null)}
+                  className="flex-1 py-3 bg-white/5 text-white/60 rounded-xl font-bold hover:bg-white/10 border border-white/10 text-xs uppercase"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    const originalBruto = confirmingPaidSale.ingreso_bruto || 0;
+                    const finalPaidAmount = confirmedAmount;
+                    const finalDescuento = originalBruto - finalPaidAmount;
+
+                    const updatePayload = {
+                      ...confirmingPaidSale,
+                      pagado: true,
+                      descuento: finalDescuento,
+                      pago_parcial: finalPaidAmount
+                    };
+
+                    try {
+                      const response = await fetch(`/api/sales/${confirmingPaidSale.id}`, {
+                        method: "PUT",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": localStorage.getItem("glow_token") || ""
+                        },
+                        body: JSON.stringify(updatePayload)
+                      });
+                      if (response.ok) {
+                        setConfirmingPaidSale(null);
+                        await fetchSales(page, itemsPerPage);
+                        await refreshData();
+                      }
+                    } catch (err) {
+                      console.error("Error setting sale paid status:", err);
+                    }
+                  }}
+                  className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 text-xs uppercase"
+                >
+                  Confirmar Cobro
                 </button>
               </div>
             </motion.div>
