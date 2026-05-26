@@ -1212,10 +1212,10 @@ app.get("/api/stats", authenticate, async (req, res) => {
         const d = new Date(s.fecha_venta);
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       })
-      .reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+      .reduce((acc, s) => acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)), 0);
 
     // Total Gross Sales (ARS only)
-    const totalGrossSales = arsSales.reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0);
+    const totalGrossSales = arsSales.reduce((acc, s) => acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)), 0);
     
     // Total Collected (ARS only)
     const totalCollected = arsSales.reduce((acc, s) => 
@@ -1239,9 +1239,9 @@ app.get("/api/stats", authenticate, async (req, res) => {
       acc + (Math.max(0, ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)) - (Number(s.pago_parcial) || 0))), 0);
 
     const salesByChannel = {
-      Local: arsSales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
-      Web: arsSales.filter(s => s.canal_venta === "Web").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
-      MercadoLibre: arsSales.filter(s => s.canal_venta === "MercadoLibre").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0)
+      Local: arsSales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)), 0),
+      Web: arsSales.filter(s => s.canal_venta === "Web").reduce((acc, s) => acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)), 0),
+      MercadoLibre: arsSales.filter(s => s.canal_venta === "MercadoLibre").reduce((acc, s) => acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)), 0)
     };
 
     const realProfit = arsSales.reduce((acc, s) => acc + (Number(s.ingreso_neto) || 0), 0);

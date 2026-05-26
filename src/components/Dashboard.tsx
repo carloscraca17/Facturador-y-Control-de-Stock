@@ -939,11 +939,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onPageChange }) => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="font-medium text-white">${sale.ingreso_bruto.toLocaleString()}</div>
-                        {sale.descuento > 0 && <div className="text-[9px] text-rose-400 opacity-60">Desc: -${sale.descuento.toLocaleString()}</div>}
+                        <div className="font-medium text-white">${(sale.ingreso_bruto - sale.descuento).toLocaleString()}</div>
+                        {sale.descuento !== 0 && (
+                          <div className="text-[9px] opacity-60 flex flex-col items-end">
+                            <span className="text-white/40">Orig: ${sale.ingreso_bruto.toLocaleString()}</span>
+                            <span className={sale.descuento > 0 ? "text-rose-400" : "text-emerald-400"}>
+                              {sale.descuento > 0 ? `Desc: -$${sale.descuento.toLocaleString()}` : `Aum: +$${Math.abs(sale.descuento).toLocaleString()}`}
+                            </span>
+                          </div>
+                        )}
                         {!sale.pagado && (
                            <div className="text-[9px] text-amber-400 font-bold mt-1">
-                             P: ${sale.pago_parcial?.toLocaleString()} / S: ${(sale.ingreso_bruto - (sale.pago_parcial || 0)).toLocaleString()}
+                             P: ${sale.pago_parcial?.toLocaleString()} / S: ${(sale.ingreso_bruto - sale.descuento - (sale.pago_parcial || 0)).toLocaleString()}
                            </div>
                         )}
                       </td>
