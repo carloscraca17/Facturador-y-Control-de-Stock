@@ -823,7 +823,7 @@ app.post("/api/sales", authenticate, async (req, res) => {
     const detalleDesc = detallesHuman ? ` (${detallesHuman})` : "";
 
     // Movement fallback
-    const amount = data.pagado ? Number(data.ingreso_bruto) : (Number(data.pago_parcial) || 0);
+    const amount = data.pagado ? (Number(data.ingreso_bruto) - (Number(data.descuento) || 0)) : (Number(data.pago_parcial) || 0);
     if (amount > 0) {
       const { error: moveError } = await supabase.from("movements").insert([{
         tipo_movimiento: "Ingreso",
@@ -1021,8 +1021,8 @@ app.put("/api/sales/:id", authenticate, async (req, res) => {
     }
 
     // 3. Sync with movements
-    const oldPaid = oldSale.pagado ? Number(oldSale.ingreso_bruto) : (Number(oldSale.pago_parcial) || 0);
-    const newPaid = updatedSale.pagado ? Number(updatedSale.ingreso_bruto) : (Number(updatedSale.pago_parcial) || 0);
+    const oldPaid = oldSale.pagado ? (Number(oldSale.ingreso_bruto) - (Number(oldSale.descuento) || 0)) : (Number(oldSale.pago_parcial) || 0);
+    const newPaid = updatedSale.pagado ? (Number(updatedSale.ingreso_bruto) - (Number(updatedSale.descuento) || 0)) : (Number(updatedSale.pago_parcial) || 0);
     const diff = newPaid - oldPaid;
 
     if (Math.abs(diff) > 0.01) {
@@ -1191,7 +1191,7 @@ app.get("/api/stats", authenticate, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: "DB not available" });
     const [salesRes, productsRes, movementsRes] = await Promise.all([
-      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca, canal_venta, moneda, fecha_venta"),
+      supabase.from("sales").select("ingreso_bruto, ingreso_neto, pagado, pago_parcial, estado_arca, canal_venta, moneda, fecha_venta, descuento"),
       supabase.from("products").select("stock_actual, stock_minimo"),
       supabase.from("movements").select("monto, tipo_movimiento, moneda")
     ]);
@@ -1220,7 +1220,7 @@ app.get("/api/stats", authenticate, async (req, res) => {
     // Total Collected (ARS only)
     const totalCollected = arsSales.reduce((acc, s) => 
       s.pagado ? 
-      acc + (Number(s.ingreso_bruto) || 0) : 
+      acc + ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)) : 
       acc + (Number(s.pago_parcial) || 0), 0);
 
     // Calculate ACTUAL balance from ALL movements in DB
@@ -1236,7 +1236,7 @@ app.get("/api/stats", authenticate, async (req, res) => {
     const unpaidTotal = arsSales.reduce((acc, s) => 
       s.pagado ? 
       acc : 
-      acc + (Math.max(0, (Number(s.ingreso_bruto) || 0) - (Number(s.pago_parcial) || 0))), 0);
+      acc + (Math.max(0, ((Number(s.ingreso_bruto) || 0) - (Number(s.descuento) || 0)) - (Number(s.pago_parcial) || 0))), 0);
 
     const salesByChannel = {
       Local: arsSales.filter(s => s.canal_venta === "Local").reduce((acc, s) => acc + (Number(s.ingreso_bruto) || 0), 0),
